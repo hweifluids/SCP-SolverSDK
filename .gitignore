@@ -1,0 +1,11 @@
+.build/
+build/
+release/
+.deps/
+.tests/
+codexlog/
+CMakeUserPresets.json
+.vs/
+.vscode/
+*.user
+*.suo
