@@ -79,7 +79,3 @@ Pass the SDK installation prefix through CMake's `CMAKE_PREFIX_PATH` or `<Packag
 - `developing`
 
 Adding `unstructuredmesh` to the SDK contract does not make the current GUI execute an unstructured solver. The GUI remains responsible for selecting supported identity types and currently recognizes only `structuredmesh` and `tools`.
-
-## Repository policy
-
-`LICENSE` is an intentionally empty placeholder until the project license is selected. Generated build, install, and dependency directories must not be committed.
