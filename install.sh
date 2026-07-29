@@ -28,8 +28,10 @@ done
 
 if [[ ${clean} -eq 1 ]]; then
   build_root="${repo_root}/.build"
+  release_root="${repo_root}/release"
   [[ "${build_root}" == "${repo_root}/.build" ]] || { echo "Refusing to clean outside SCP-SolverSDK." >&2; exit 1; }
-  rm -rf -- "${build_root}"
+  [[ "${install_dir}" == "${release_root}/"* ]] || { echo "Refusing to clean outside SCP-SolverSDK/release." >&2; exit 1; }
+  rm -rf -- "${build_root}" "${install_dir}"
 fi
 
 command -v cmake >/dev/null 2>&1 || {

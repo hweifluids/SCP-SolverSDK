@@ -12,6 +12,8 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
 
   if(DEFINED STREAMCENTERPLUS_BUILD_DATE AND NOT STREAMCENTERPLUS_BUILD_DATE STREQUAL "")
     set(_streamcenterplus_build_date "${STREAMCENTERPLUS_BUILD_DATE}")
+  elseif(DEFINED ENV{STREAMCENTERPLUS_BUILD_DATE} AND NOT "$ENV{STREAMCENTERPLUS_BUILD_DATE}" STREQUAL "")
+    set(_streamcenterplus_build_date "$ENV{STREAMCENTERPLUS_BUILD_DATE}")
   else()
     string(TIMESTAMP _streamcenterplus_build_date "%Y%m%d")
   endif()
@@ -40,6 +42,15 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
       "Unsupported solver info type '${_streamcenterplus_solver_type}' for target '${target}'.")
   endif()
 
+  set(_streamcenterplus_mesh_features "single_static")
+  if(ARGC GREATER 5)
+    set(_streamcenterplus_mesh_features "${ARGV5}")
+  endif()
+  if(NOT _streamcenterplus_mesh_features MATCHES "^[A-Za-z0-9_,-]+$")
+    message(FATAL_ERROR
+      "Solver mesh features for target '${target}' must be a comma-separated identifier list; received '${_streamcenterplus_mesh_features}'.")
+  endif()
+
   target_link_libraries("${target}" PRIVATE SCP::SolverSDK)
   target_compile_definitions("${target}" PRIVATE
     STREAMCENTERPLUS_SOLVER_NAME="${solver_name}"
@@ -48,11 +59,12 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
     STREAMCENTERPLUS_BUILD_DATE="${_streamcenterplus_build_date}"
     STREAMCENTERPLUS_HAS_CPU=${_streamcenterplus_has_cpu}
     STREAMCENTERPLUS_HAS_CUDA=${_streamcenterplus_has_cuda}
+    STREAMCENTERPLUS_MESH_FEATURES="${_streamcenterplus_mesh_features}"
   )
   set_target_properties("${target}" PROPERTIES
     OUTPUT_NAME "${solver_name}_solver_${_streamcenterplus_build_date}"
   )
 
   message(STATUS
-    "${target}: solver info type=${_streamcenterplus_solver_type}, date=${_streamcenterplus_build_date}, cpu=${_streamcenterplus_has_cpu}, cuda=${_streamcenterplus_has_cuda}.")
+    "${target}: solver info type=${_streamcenterplus_solver_type}, mesh_features=${_streamcenterplus_mesh_features}, date=${_streamcenterplus_build_date}, cpu=${_streamcenterplus_has_cpu}, cuda=${_streamcenterplus_has_cuda}.")
 endfunction()

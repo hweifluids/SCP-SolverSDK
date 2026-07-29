@@ -73,7 +73,8 @@ $executable = $executables[0]
 
 $identity = (& $executable.FullName --solver-info | Out-String)
 if ($LASTEXITCODE -ne 0 -or $identity -notmatch "streamcenterplus_solver_identity=1" -or
-    $identity -notmatch "type=unstructuredmesh") {
+    $identity -notmatch "type=unstructuredmesh" -or
+    $identity -notmatch "mesh_features=single_static,two_zone_static") {
     throw "SDK smoke solver identity validation failed.`n$identity"
 }
 & $executable.FullName

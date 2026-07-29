@@ -27,6 +27,10 @@
 #error "STREAMCENTERPLUS_HAS_CUDA must be configured for every solver executable."
 #endif
 
+#ifndef STREAMCENTERPLUS_MESH_FEATURES
+#define STREAMCENTERPLUS_MESH_FEATURES "single_static"
+#endif
+
 namespace streamcenterplus {
 
 inline bool HandleSolverInfoRequest(int argc, char* const* argv) {
@@ -44,7 +48,11 @@ inline bool HandleSolverInfoRequest(int argc, char* const* argv) {
               << "organization=The University of Manchester\n"
               << "date=" STREAMCENTERPLUS_BUILD_DATE "\n"
               << "cpu=" << (STREAMCENTERPLUS_HAS_CPU ? 1 : 0) << "\n"
-              << "cuda=" << (STREAMCENTERPLUS_HAS_CUDA ? 1 : 0) << "\n";
+              << "cuda=" << (STREAMCENTERPLUS_HAS_CUDA ? 1 : 0) << "\n"
+              // A comma-separated, additive capability list.  Consumers that
+              // predate this field continue to treat an absent value as
+              // single_static.
+              << "mesh_features=" STREAMCENTERPLUS_MESH_FEATURES "\n";
     return true;
 }
 

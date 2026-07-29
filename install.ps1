@@ -14,12 +14,21 @@ $InstallDir = Join-Path (Join-Path $repoRoot "release") $platformTag
 
 if ($Clean) {
     $buildRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot ".build"))
+    $releaseRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "release"))
+    $installRoot = [System.IO.Path]::GetFullPath($InstallDir)
     if (-not $buildRoot.StartsWith($repoRoot + [System.IO.Path]::DirectorySeparatorChar,
                                    [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing to clean a build directory outside SCP-SolverSDK: $buildRoot"
     }
+    if (-not $installRoot.StartsWith($releaseRoot + [System.IO.Path]::DirectorySeparatorChar,
+                                     [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to clean an install directory outside SCP-SolverSDK/release: $installRoot"
+    }
     if (Test-Path -LiteralPath $buildRoot) {
         Remove-Item -LiteralPath $buildRoot -Recurse -Force
+    }
+    if (Test-Path -LiteralPath $installRoot) {
+        Remove-Item -LiteralPath $installRoot -Recurse -Force
     }
 }
 

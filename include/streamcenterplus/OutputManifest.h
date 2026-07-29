@@ -536,7 +536,9 @@ inline bool IsVtkFamilyFile(const std::filesystem::path& path) {
            ext == ".vtp" || ext == ".vtk" || ext == ".pvd" || ext == ".vtkhdf";
 }
 
-inline void WriteOutputManifest(const std::filesystem::path& outputDir, const std::string& solverName) {
+inline void WriteOutputManifest(const std::filesystem::path& outputDir,
+                                const std::string& solverName,
+                                const std::filesystem::path& publishedOutputDir) {
     std::filesystem::create_directories(outputDir);
     std::vector<std::filesystem::path> files;
     if (std::filesystem::exists(outputDir)) {
@@ -561,7 +563,9 @@ inline void WriteOutputManifest(const std::filesystem::path& outputDir, const st
     out << "{\n";
     out << "  \"schema\": \"streamcenterplus.output_manifest.v1\",\n";
     out << "  \"solver\": " << Quote(solverName) << ",\n";
-    out << "  \"output_directory\": " << Quote(std::filesystem::absolute(outputDir).string()) << ",\n";
+    out << "  \"output_directory\": "
+        << Quote(std::filesystem::absolute(publishedOutputDir).string())
+        << ",\n";
     out << "  \"naming_conventions\": {\n";
     out << "    \"velocity\": \"Velocity vectors are written as 3-component VTK arrays named with velocity, for example velocity, mean_velocity, phi_velocity, or velocity_rom.\",\n";
     out << "    \"pressure\": \"Pressure scalars are written with pressure in the name, for example pressure, mean_pressure, or pressure_rom.\",\n";
@@ -584,6 +588,11 @@ inline void WriteOutputManifest(const std::filesystem::path& outputDir, const st
     }
     out << "]\n";
     out << "}\n";
+}
+
+inline void WriteOutputManifest(const std::filesystem::path& outputDir,
+                                const std::string& solverName) {
+    WriteOutputManifest(outputDir, solverName, outputDir);
 }
 
 }  // namespace streamcenterplus::manifest

@@ -53,6 +53,7 @@ fi
 identity="$(${executables[0]} --solver-info)"
 grep -q '^streamcenterplus_solver_identity=1$' <<<"${identity}"
 grep -q '^type=unstructuredmesh$' <<<"${identity}"
+grep -q '^mesh_features=single_static,two_zone_static$' <<<"${identity}"
 "${executables[0]}"
 printf '%s\n' "${identity}"
 echo "SCP-SolverSDK smoke passed: ${executables[0]}"
