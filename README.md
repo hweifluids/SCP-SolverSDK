@@ -14,6 +14,24 @@ The VTK-related headers are available through the SDK target, but a consumer tha
 
 `examples/smoke` is a standalone installed-package consumer with no source-tree include fallback. Its Windows/Linux runners install the SDK, build a Release consumer, validate the `unstructuredmesh` solver signature, and execute the backend parser in one command.
 
+## Visualization result manifest
+
+`streamcenterplus/VisualizationManifest.h` defines the typed visualization
+catalog embedded by `WriteOutputManifest` in
+`streamcenterplus.output_manifest.v2`. A catalog identifies the canonical
+solver family and run generation, declares fixed or numeric selector axes,
+describes viewable quantities, and maps every actually published selector
+tuple to a relative result path plus an optional VTKHDF step. Numeric axis
+values are enumerated from produced results rather than inferred from deck
+ranges.
+
+The existing `vtk_files` inventory remains in the v2 document for compatibility.
+New consumers should prefer `visualization_catalog`; an empty catalog means that
+the producer has not yet registered semantic result variants. Catalog paths are
+validated to remain inside the output directory and the completed manifest is
+published by atomic replacement, so a failed solve cannot expose a partially
+written catalog.
+
 ## Requirements
 
 - CMake 3.24 or newer.

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <streamcenterplus/VisualizationManifest.h>
+
 #include <vtkAbstractArray.h>
 #include <vtkCellData.h>
 #include <vtkDataObject.h>
@@ -31,6 +33,13 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#ifdef _WIN32
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#endif
 
 namespace streamcenterplus::manifest {
 
@@ -536,9 +545,33 @@ inline bool IsVtkFamilyFile(const std::filesystem::path& path) {
            ext == ".vtp" || ext == ".vtk" || ext == ".pvd" || ext == ".vtkhdf";
 }
 
+inline void ReplaceOutputManifestFile(const std::filesystem::path& temporaryPath,
+                                      const std::filesystem::path& manifestPath) {
+#ifdef _WIN32
+    if (!MoveFileExW(temporaryPath.c_str(),
+                     manifestPath.c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        const DWORD error = GetLastError();
+        std::error_code ignored;
+        std::filesystem::remove(temporaryPath, ignored);
+        throw std::runtime_error("Cannot atomically replace output manifest (Windows error "
+                                 + std::to_string(error) + "): " + manifestPath.string());
+    }
+#else
+    std::error_code error;
+    std::filesystem::rename(temporaryPath, manifestPath, error);
+    if (error) {
+        std::filesystem::remove(temporaryPath);
+        throw std::runtime_error("Cannot atomically replace output manifest: "
+                                 + manifestPath.string() + ": " + error.message());
+    }
+#endif
+}
+
 inline void WriteOutputManifest(const std::filesystem::path& outputDir,
                                 const std::string& solverName,
-                                const std::filesystem::path& publishedOutputDir) {
+                                const std::filesystem::path& publishedOutputDir,
+                                VisualizationCatalog catalog) {
     std::filesystem::create_directories(outputDir);
     std::vector<std::filesystem::path> files;
     if (std::filesystem::exists(outputDir)) {
@@ -554,15 +587,31 @@ inline void WriteOutputManifest(const std::filesystem::path& outputDir,
     }
     std::sort(files.begin(), files.end());
 
+    if (catalog.solverFamily.empty()) {
+        catalog.solverFamily = CanonicalSolverFamily(solverName);
+    }
+    if (catalog.solverVariant.empty()) {
+        catalog.solverVariant = SolverVariantFromName(solverName);
+    }
+    if (catalog.runId.empty()) {
+        catalog.runId = MakeVisualizationRunId();
+    }
+    ValidateVisualizationCatalog(catalog, outputDir);
+
     const std::filesystem::path manifestPath = outputDir / "output_manifest.json";
-    std::ofstream out(manifestPath);
+    const std::filesystem::path temporaryPath =
+        outputDir / ("output_manifest.json.tmp-" + MakeVisualizationRunId());
+    std::ofstream out(temporaryPath, std::ios::binary | std::ios::trunc);
     if (!out) {
-        throw std::runtime_error("Cannot write output manifest: " + manifestPath.string());
+        throw std::runtime_error("Cannot write temporary output manifest: " + temporaryPath.string());
     }
 
     out << "{\n";
-    out << "  \"schema\": \"streamcenterplus.output_manifest.v1\",\n";
+    out << "  \"schema\": \"streamcenterplus.output_manifest.v2\",\n";
     out << "  \"solver\": " << Quote(solverName) << ",\n";
+    out << "  \"solver_family\": " << Quote(catalog.solverFamily) << ",\n";
+    out << "  \"solver_variant\": " << Quote(catalog.solverVariant) << ",\n";
+    out << "  \"run_id\": " << Quote(catalog.runId) << ",\n";
     out << "  \"output_directory\": "
         << Quote(std::filesystem::absolute(publishedOutputDir).string())
         << ",\n";
@@ -586,8 +635,41 @@ inline void WriteOutputManifest(const std::filesystem::path& outputDir,
     if (!files.empty()) {
         out << "\n  ";
     }
-    out << "]\n";
+    out << "],\n";
+    out << "  \"visualization_catalog\": ";
+    WriteVisualizationCatalog(out, catalog, "  ");
+    out << "\n";
     out << "}\n";
+
+    out.flush();
+    if (!out) {
+        out.close();
+        std::error_code ignored;
+        std::filesystem::remove(temporaryPath, ignored);
+        throw std::runtime_error("Failed while writing output manifest: " + temporaryPath.string());
+    }
+    out.close();
+    if (!out) {
+        std::error_code ignored;
+        std::filesystem::remove(temporaryPath, ignored);
+        throw std::runtime_error("Failed while closing output manifest: " + temporaryPath.string());
+    }
+    ReplaceOutputManifestFile(temporaryPath, manifestPath);
+}
+
+inline void WriteOutputManifest(const std::filesystem::path& outputDir,
+                                const std::string& solverName,
+                                const std::filesystem::path& publishedOutputDir) {
+    WriteOutputManifest(outputDir,
+                        solverName,
+                        publishedOutputDir,
+                        MakeVisualizationCatalog(solverName));
+}
+
+inline void WriteOutputManifest(const std::filesystem::path& outputDir,
+                                const std::string& solverName,
+                                VisualizationCatalog catalog) {
+    WriteOutputManifest(outputDir, solverName, outputDir, std::move(catalog));
 }
 
 inline void WriteOutputManifest(const std::filesystem::path& outputDir,

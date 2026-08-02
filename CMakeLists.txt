@@ -62,6 +62,17 @@ install(FILES
 )
 
 if(BUILD_TESTING)
+  add_executable(SCPSolverSDKVisualizationManifestTests
+    tests/VisualizationManifestTest.cpp
+  )
+  target_link_libraries(SCPSolverSDKVisualizationManifestTests PRIVATE
+    SCP::SolverSDK
+  )
+  add_test(
+    NAME scp_solver_sdk_visualization_manifest
+    COMMAND SCPSolverSDKVisualizationManifestTests
+  )
+
   set(_scp_solver_sdk_cuda_policy_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/ValidateOptionalCudaPolicy.cmake")
 
