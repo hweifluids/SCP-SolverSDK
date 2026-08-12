@@ -23,7 +23,10 @@ solver family and run generation, declares fixed or numeric selector axes,
 describes viewable quantities, and maps every actually published selector
 tuple to a relative result path plus an optional VTKHDF step. Numeric axis
 values are enumerated from produced results rather than inferred from deck
-ranges.
+ranges. A variant may omit axes that do not apply to its branch; every selector
+it does provide must name a declared axis and value. The catalog may publish
+only the sparse tuples that actually exist. All manifest strings and relative
+variant paths use UTF-8.
 
 The existing `vtk_files` inventory remains in the v2 document for compatibility.
 New consumers should prefer `visualization_catalog`; an empty catalog means that

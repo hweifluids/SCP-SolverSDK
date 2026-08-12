@@ -1,14 +1,34 @@
 include_guard(GLOBAL)
 
 function(streamcenterplus_configure_solver_info target solver_name has_cpu has_cuda)
+  if(ARGC LESS 4 OR ARGC GREATER 6)
+    message(FATAL_ERROR
+      "streamcenterplus_configure_solver_info expects 4 to 6 arguments; received ${ARGC}.")
+  endif()
   if(NOT TARGET "${target}")
     message(FATAL_ERROR "streamcenterplus_configure_solver_info: target '${target}' does not exist.")
+  endif()
+  if(NOT solver_name MATCHES "^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    message(FATAL_ERROR
+      "Solver name for target '${target}' must be a non-empty single-line identifier; received '${solver_name}'.")
+  endif()
+  if(NOT DEFINED PROJECT_VERSION OR PROJECT_VERSION STREQUAL "")
+    message(FATAL_ERROR
+      "streamcenterplus_configure_solver_info requires a non-empty project VERSION.")
   endif()
   if(NOT TARGET SCP::SolverSDK)
     message(FATAL_ERROR
       "streamcenterplus_configure_solver_info requires the SCP::SolverSDK target. "
       "Add SCP-SolverSDK with add_subdirectory() or find_package(SCPSolverSDK CONFIG REQUIRED).")
   endif()
+
+  foreach(_streamcenterplus_bool_name IN ITEMS has_cpu has_cuda)
+    string(TOUPPER "${${_streamcenterplus_bool_name}}" _streamcenterplus_bool_value)
+    if(NOT _streamcenterplus_bool_value MATCHES "^(ON|OFF|TRUE|FALSE|0|1)$")
+      message(FATAL_ERROR
+        "${_streamcenterplus_bool_name} for target '${target}' must be one of ON, OFF, TRUE, FALSE, 1, or 0; received '${${_streamcenterplus_bool_name}}'.")
+    endif()
+  endforeach()
 
   if(DEFINED STREAMCENTERPLUS_BUILD_DATE AND NOT STREAMCENTERPLUS_BUILD_DATE STREQUAL "")
     set(_streamcenterplus_build_date "${STREAMCENTERPLUS_BUILD_DATE}")
@@ -46,7 +66,8 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
   if(ARGC GREATER 5)
     set(_streamcenterplus_mesh_features "${ARGV5}")
   endif()
-  if(NOT _streamcenterplus_mesh_features MATCHES "^[A-Za-z0-9_,-]+$")
+  if(NOT _streamcenterplus_mesh_features MATCHES
+     "^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$")
     message(FATAL_ERROR
       "Solver mesh features for target '${target}' must be a comma-separated identifier list; received '${_streamcenterplus_mesh_features}'.")
   endif()

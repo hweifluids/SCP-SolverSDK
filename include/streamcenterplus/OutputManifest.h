@@ -3,10 +3,14 @@
 #include <streamcenterplus/VisualizationManifest.h>
 
 #include <vtkAbstractArray.h>
+#include <vtkCallbackCommand.h>
 #include <vtkCellData.h>
+#include <vtkCommand.h>
 #include <vtkDataObject.h>
 #include <vtkDataSet.h>
 #include <vtkDataSetAttributes.h>
+#include <vtkErrorCode.h>
+#include <vtkExecutive.h>
 #include <vtkFieldData.h>
 #include <vtkGenericDataObjectReader.h>
 #include <vtkImageData.h>
@@ -16,18 +20,19 @@
 #include <vtkSmartPointer.h>
 #include <vtkStructuredGrid.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkXMLDataElement.h>
 #include <vtkXMLImageDataReader.h>
 #include <vtkXMLPolyDataReader.h>
 #include <vtkXMLRectilinearGridReader.h>
 #include <vtkXMLStructuredGridReader.h>
 #include <vtkXMLUnstructuredGridReader.h>
+#include <vtkXMLUtilities.h>
 
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
-#include <regex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -51,34 +56,7 @@ inline std::string ToLower(std::string value) {
 }
 
 inline std::string JsonEscape(const std::string& value) {
-    std::ostringstream out;
-    for (unsigned char ch : value) {
-        switch (ch) {
-        case '\\':
-            out << "\\\\";
-            break;
-        case '"':
-            out << "\\\"";
-            break;
-        case '\n':
-            out << "\\n";
-            break;
-        case '\r':
-            out << "\\r";
-            break;
-        case '\t':
-            out << "\\t";
-            break;
-        default:
-            if (ch < 0x20) {
-                out << "\\u" << std::hex << static_cast<int>(ch);
-            } else {
-                out << static_cast<char>(ch);
-            }
-            break;
-        }
-    }
-    return out.str();
+    return VisualizationJsonEscape(value);
 }
 
 inline std::string Quote(const std::string& value) {
@@ -322,46 +300,82 @@ inline std::vector<std::string> ComponentLabels(const std::string& name, int com
 inline std::string RelativePath(const std::filesystem::path& path, const std::filesystem::path& root) {
     std::error_code ec;
     const std::filesystem::path relative = std::filesystem::relative(path, root, ec);
-    return (ec ? path.filename() : relative).generic_string();
+    if (ec || relative.empty() || *relative.begin() == "..") {
+        throw std::runtime_error("Output manifest path escapes the output directory: "
+                                 + VisualizationPathToUtf8(path));
+    }
+    return VisualizationPathToUtf8(relative);
+}
+
+inline vtkSmartPointer<vtkCallbackCommand> ObserveVtkReaderErrors(vtkObject* reader,
+                                                                   bool* hadError) {
+    auto observer = vtkSmartPointer<vtkCallbackCommand>::New();
+    observer->SetClientData(hadError);
+    observer->SetCallback([](vtkObject*, unsigned long, void* clientData, void*) {
+        *static_cast<bool*>(clientData) = true;
+    });
+    reader->AddObserver(vtkCommand::ErrorEvent, observer);
+    return observer;
+}
+
+template <typename Reader>
+vtkSmartPointer<vtkDataObject> ReadXmlDataObject(const std::filesystem::path& path,
+                                                  const std::string& fileName) {
+    auto reader = vtkSmartPointer<Reader>::New();
+    bool hadError = false;
+    [[maybe_unused]] const auto errorObserver = ObserveVtkReaderErrors(reader, &hadError);
+    [[maybe_unused]] const auto executiveErrorObserver =
+        ObserveVtkReaderErrors(reader->GetExecutive(), &hadError);
+    if (!reader->CanReadFile(fileName.c_str())) {
+        throw std::runtime_error("Unsupported or unreadable VTK dataset: "
+                                 + VisualizationPathToUtf8(path));
+    }
+    reader->SetFileName(fileName.c_str());
+    reader->Update();
+    vtkDataObject* output = reader->GetOutputDataObject(0);
+    if (hadError || reader->GetErrorCode() != vtkErrorCode::NoError || output == nullptr) {
+        throw std::runtime_error("Unsupported or unreadable VTK dataset: "
+                                 + VisualizationPathToUtf8(path));
+    }
+    return output;
 }
 
 inline vtkSmartPointer<vtkDataObject> ReadDataObject(const std::filesystem::path& path) {
     const std::string ext = ToLower(path.extension().string());
+    const std::string fileName = VisualizationPathToUtf8(path);
     if (ext == ".vti") {
-        auto reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-        reader->SetFileName(path.string().c_str());
-        reader->Update();
-        return reader->GetOutput();
+        return ReadXmlDataObject<vtkXMLImageDataReader>(path, fileName);
     }
     if (ext == ".vts") {
-        auto reader = vtkSmartPointer<vtkXMLStructuredGridReader>::New();
-        reader->SetFileName(path.string().c_str());
-        reader->Update();
-        return reader->GetOutput();
+        return ReadXmlDataObject<vtkXMLStructuredGridReader>(path, fileName);
     }
     if (ext == ".vtr") {
-        auto reader = vtkSmartPointer<vtkXMLRectilinearGridReader>::New();
-        reader->SetFileName(path.string().c_str());
-        reader->Update();
-        return reader->GetOutput();
+        return ReadXmlDataObject<vtkXMLRectilinearGridReader>(path, fileName);
     }
     if (ext == ".vtu") {
-        auto reader = vtkSmartPointer<vtkXMLUnstructuredGridReader>::New();
-        reader->SetFileName(path.string().c_str());
-        reader->Update();
-        return reader->GetOutput();
+        return ReadXmlDataObject<vtkXMLUnstructuredGridReader>(path, fileName);
     }
     if (ext == ".vtp") {
-        auto reader = vtkSmartPointer<vtkXMLPolyDataReader>::New();
-        reader->SetFileName(path.string().c_str());
-        reader->Update();
-        return reader->GetOutput();
+        return ReadXmlDataObject<vtkXMLPolyDataReader>(path, fileName);
     }
     if (ext == ".vtk") {
         auto reader = vtkSmartPointer<vtkGenericDataObjectReader>::New();
-        reader->SetFileName(path.string().c_str());
+        bool hadError = false;
+        [[maybe_unused]] const auto errorObserver = ObserveVtkReaderErrors(reader, &hadError);
+        [[maybe_unused]] const auto executiveErrorObserver =
+            ObserveVtkReaderErrors(reader->GetExecutive(), &hadError);
+        reader->SetFileName(fileName.c_str());
+        if (reader->ReadOutputType() < 0 || hadError) {
+            throw std::runtime_error("Unsupported or unreadable VTK dataset: "
+                                     + VisualizationPathToUtf8(path));
+        }
         reader->Update();
-        return reader->GetOutputDataObject(0);
+        vtkDataObject* output = reader->GetOutputDataObject(0);
+        if (hadError || reader->GetErrorCode() != vtkErrorCode::NoError || output == nullptr) {
+            throw std::runtime_error("Unsupported or unreadable VTK dataset: "
+                                     + VisualizationPathToUtf8(path));
+        }
+        return output;
     }
     return nullptr;
 }
@@ -446,17 +460,6 @@ inline void WriteArrayList(std::ostream& out,
     out << indent << "]";
 }
 
-inline std::vector<std::pair<std::string, std::string>> ParseXmlAttributes(const std::string& text) {
-    static const std::regex attrRegex("([A-Za-z0-9_:\\-]+)\\s*=\\s*\"([^\"]*)\"");
-    std::vector<std::pair<std::string, std::string>> attrs;
-    for (auto it = std::sregex_iterator(text.begin(), text.end(), attrRegex);
-         it != std::sregex_iterator();
-         ++it) {
-        attrs.push_back({(*it)[1].str(), (*it)[2].str()});
-    }
-    return attrs;
-}
-
 inline void WritePvdFile(std::ostream& out,
                          const std::filesystem::path& path,
                          const std::filesystem::path& outputDir,
@@ -467,19 +470,49 @@ inline void WritePvdFile(std::ostream& out,
     out << indent << "  \"vtk_data_object\": \"vtkCollection\",\n";
     out << indent << "  \"physical_meaning\": \"PVD collection file referencing VTK-family datasets written by this solver.\",\n";
     out << indent << "  \"datasets\": [";
-    std::ifstream input(path);
-    std::string line;
+    const std::string fileName = VisualizationPathToUtf8(path);
+    vtkSmartPointer<vtkXMLDataElement> root;
+    root.TakeReference(vtkXMLUtilities::ReadElementFromFile(fileName.c_str()));
+    if (root == nullptr || root->GetName() == nullptr
+        || std::string(root->GetName()) != "VTKFile") {
+        throw std::runtime_error("Cannot parse PVD collection: " + fileName);
+    }
+    const char* vtkFileType = root->GetAttribute("type");
+    if (vtkFileType == nullptr || std::string(vtkFileType) != "Collection") {
+        throw std::runtime_error("PVD VTKFile type must be Collection: " + fileName);
+    }
+    vtkXMLDataElement* collection = root->FindNestedElementWithName("Collection");
+    if (collection == nullptr) {
+        throw std::runtime_error("PVD collection does not contain a Collection element: "
+                                 + fileName);
+    }
     bool first = true;
-    while (std::getline(input, line)) {
-        if (line.find("<DataSet") == std::string::npos) {
+    for (int elementIndex = 0;
+         elementIndex < collection->GetNumberOfNestedElements();
+         ++elementIndex) {
+        vtkXMLDataElement* element = collection->GetNestedElement(elementIndex);
+        if (element == nullptr || element->GetName() == nullptr
+            || std::string(element->GetName()) != "DataSet") {
             continue;
         }
-        const auto attrs = ParseXmlAttributes(line);
+        const char* referencedFile = element->GetAttribute("file");
+        if (referencedFile == nullptr || *referencedFile == '\0') {
+            throw std::runtime_error("PVD DataSet element is missing a non-empty file attribute: "
+                                     + fileName);
+        }
         out << (first ? "\n" : ",\n");
         first = false;
         out << indent << "    {";
-        for (std::size_t i = 0; i < attrs.size(); ++i) {
-            out << (i == 0 ? "" : ", ") << Quote(attrs[i].first) << ": " << Quote(attrs[i].second);
+        for (int attributeIndex = 0;
+             attributeIndex < element->GetNumberOfAttributes();
+             ++attributeIndex) {
+            const char* name = element->GetAttributeName(attributeIndex);
+            const char* value = element->GetAttributeValue(attributeIndex);
+            if (name == nullptr || value == nullptr) {
+                throw std::runtime_error("Cannot read a PVD DataSet attribute: " + fileName);
+            }
+            out << (attributeIndex == 0 ? "" : ", ")
+                << Quote(name) << ": " << Quote(value);
         }
         out << "}";
     }
@@ -545,6 +578,30 @@ inline bool IsVtkFamilyFile(const std::filesystem::path& path) {
            ext == ".vtp" || ext == ".vtk" || ext == ".pvd" || ext == ".vtkhdf";
 }
 
+class TemporaryOutputManifestFile {
+public:
+    explicit TemporaryOutputManifestFile(std::filesystem::path path)
+        : path_(std::move(path)) {}
+
+    TemporaryOutputManifestFile(const TemporaryOutputManifestFile&) = delete;
+    TemporaryOutputManifestFile& operator=(const TemporaryOutputManifestFile&) = delete;
+
+    ~TemporaryOutputManifestFile() {
+        if (active_) {
+            std::error_code ignored;
+            std::filesystem::remove(path_, ignored);
+        }
+    }
+
+    void Release() noexcept {
+        active_ = false;
+    }
+
+private:
+    std::filesystem::path path_;
+    bool active_ = true;
+};
+
 inline void ReplaceOutputManifestFile(const std::filesystem::path& temporaryPath,
                                       const std::filesystem::path& manifestPath) {
 #ifdef _WIN32
@@ -555,7 +612,8 @@ inline void ReplaceOutputManifestFile(const std::filesystem::path& temporaryPath
         std::error_code ignored;
         std::filesystem::remove(temporaryPath, ignored);
         throw std::runtime_error("Cannot atomically replace output manifest (Windows error "
-                                 + std::to_string(error) + "): " + manifestPath.string());
+                                 + std::to_string(error) + "): "
+                                 + VisualizationPathToUtf8(manifestPath));
     }
 #else
     std::error_code error;
@@ -563,7 +621,8 @@ inline void ReplaceOutputManifestFile(const std::filesystem::path& temporaryPath
     if (error) {
         std::filesystem::remove(temporaryPath);
         throw std::runtime_error("Cannot atomically replace output manifest: "
-                                 + manifestPath.string() + ": " + error.message());
+                                 + VisualizationPathToUtf8(manifestPath) + ": "
+                                 + error.message());
     }
 #endif
 }
@@ -581,6 +640,13 @@ inline void WriteOutputManifest(const std::filesystem::path& outputDir,
             }
             const std::filesystem::path path = entry.path();
             if (IsVtkFamilyFile(path)) {
+                const std::filesystem::path canonicalPath = std::filesystem::canonical(path);
+                const std::filesystem::path canonicalOutput =
+                    std::filesystem::weakly_canonical(std::filesystem::absolute(outputDir));
+                if (!VisualizationPathIsWithin(canonicalPath, canonicalOutput)) {
+                    throw std::runtime_error("Output manifest VTK file escapes the output directory: "
+                                             + VisualizationPathToUtf8(path));
+                }
                 files.push_back(path);
             }
         }
@@ -601,10 +667,13 @@ inline void WriteOutputManifest(const std::filesystem::path& outputDir,
     const std::filesystem::path manifestPath = outputDir / "output_manifest.json";
     const std::filesystem::path temporaryPath =
         outputDir / ("output_manifest.json.tmp-" + MakeVisualizationRunId());
+    TemporaryOutputManifestFile temporaryFile(temporaryPath);
     std::ofstream out(temporaryPath, std::ios::binary | std::ios::trunc);
     if (!out) {
-        throw std::runtime_error("Cannot write temporary output manifest: " + temporaryPath.string());
+        throw std::runtime_error("Cannot write temporary output manifest: "
+                                 + VisualizationPathToUtf8(temporaryPath));
     }
+    out.imbue(std::locale::classic());
 
     out << "{\n";
     out << "  \"schema\": \"streamcenterplus.output_manifest.v2\",\n";
@@ -613,7 +682,7 @@ inline void WriteOutputManifest(const std::filesystem::path& outputDir,
     out << "  \"solver_variant\": " << Quote(catalog.solverVariant) << ",\n";
     out << "  \"run_id\": " << Quote(catalog.runId) << ",\n";
     out << "  \"output_directory\": "
-        << Quote(std::filesystem::absolute(publishedOutputDir).string())
+        << Quote(VisualizationPathToUtf8(std::filesystem::absolute(publishedOutputDir)))
         << ",\n";
     out << "  \"naming_conventions\": {\n";
     out << "    \"velocity\": \"Velocity vectors are written as 3-component VTK arrays named with velocity, for example velocity, mean_velocity, phi_velocity, or velocity_rom.\",\n";
@@ -644,17 +713,16 @@ inline void WriteOutputManifest(const std::filesystem::path& outputDir,
     out.flush();
     if (!out) {
         out.close();
-        std::error_code ignored;
-        std::filesystem::remove(temporaryPath, ignored);
-        throw std::runtime_error("Failed while writing output manifest: " + temporaryPath.string());
+        throw std::runtime_error("Failed while writing output manifest: "
+                                 + VisualizationPathToUtf8(temporaryPath));
     }
     out.close();
     if (!out) {
-        std::error_code ignored;
-        std::filesystem::remove(temporaryPath, ignored);
-        throw std::runtime_error("Failed while closing output manifest: " + temporaryPath.string());
+        throw std::runtime_error("Failed while closing output manifest: "
+                                 + VisualizationPathToUtf8(temporaryPath));
     }
     ReplaceOutputManifestFile(temporaryPath, manifestPath);
+    temporaryFile.Release();
 }
 
 inline void WriteOutputManifest(const std::filesystem::path& outputDir,

@@ -73,6 +73,130 @@ if(BUILD_TESTING)
     COMMAND SCPSolverSDKVisualizationManifestTests
   )
 
+  find_package(VTK QUIET COMPONENTS
+    CommonCore
+    CommonDataModel
+    IOHDF
+    IOLegacy
+    IOXML
+    IOXMLParser
+  )
+  if(VTK_FOUND)
+    add_executable(SCPSolverSDKVtkHdfTokenTests
+      tests/VtkHdfTokenTest.cpp
+    )
+    target_link_libraries(SCPSolverSDKVtkHdfTokenTests PRIVATE
+      SCP::SolverSDK
+      VTK::CommonCore
+      VTK::CommonDataModel
+      VTK::IOHDF
+    )
+    add_test(
+      NAME scp_solver_sdk_vtkhdf_token
+      COMMAND SCPSolverSDKVtkHdfTokenTests
+    )
+
+    add_executable(SCPSolverSDKVtkInputAssociationTests
+      tests/VtkInputAssociationTest.cpp
+    )
+    target_link_libraries(SCPSolverSDKVtkInputAssociationTests PRIVATE
+      SCP::SolverSDK
+      VTK::CommonCore
+      VTK::CommonDataModel
+    )
+    add_test(
+      NAME scp_solver_sdk_vtk_input_association
+      COMMAND SCPSolverSDKVtkInputAssociationTests
+    )
+
+    add_executable(SCPSolverSDKOutputManifestTests
+      tests/OutputManifestTest.cpp
+    )
+    target_link_libraries(SCPSolverSDKOutputManifestTests PRIVATE
+      SCP::SolverSDK
+      VTK::CommonCore
+      VTK::CommonDataModel
+      VTK::IOLegacy
+      VTK::IOXML
+      VTK::IOXMLParser
+    )
+    add_test(
+      NAME scp_solver_sdk_output_manifest
+      COMMAND SCPSolverSDKOutputManifestTests
+    )
+
+    if(WIN32)
+      set_tests_properties(
+        scp_solver_sdk_vtkhdf_token
+        scp_solver_sdk_vtk_input_association
+        scp_solver_sdk_output_manifest
+        PROPERTIES
+          ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:VTK::CommonCore>"
+      )
+    endif()
+
+    if(COMMAND vtk_module_autoinit)
+      vtk_module_autoinit(
+        TARGETS SCPSolverSDKVtkHdfTokenTests
+        MODULES VTK::CommonCore VTK::CommonDataModel VTK::IOHDF
+      )
+      vtk_module_autoinit(
+        TARGETS SCPSolverSDKVtkInputAssociationTests
+        MODULES VTK::CommonCore VTK::CommonDataModel
+      )
+      vtk_module_autoinit(
+        TARGETS SCPSolverSDKOutputManifestTests
+        MODULES
+          VTK::CommonCore
+          VTK::CommonDataModel
+          VTK::IOLegacy
+          VTK::IOXML
+          VTK::IOXMLParser
+      )
+    endif()
+  endif()
+
+  set(_scp_solver_sdk_solver_info_fixture
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/SolverInfoFixture")
+  foreach(_scp_solver_sdk_solver_info_mode IN ITEMS
+      none
+      empty-name
+      unsafe-name
+      missing-version
+      extra-argument
+      invalid-features
+      invalid-bool)
+    if(_scp_solver_sdk_solver_info_mode STREQUAL "none")
+      set(_scp_solver_sdk_solver_info_error_pattern "")
+    elseif(_scp_solver_sdk_solver_info_mode STREQUAL "empty-name")
+      set(_scp_solver_sdk_solver_info_error_pattern "must be a non-empty single-line identifier")
+    elseif(_scp_solver_sdk_solver_info_mode STREQUAL "unsafe-name")
+      set(_scp_solver_sdk_solver_info_error_pattern "must be a non-empty single-line identifier")
+    elseif(_scp_solver_sdk_solver_info_mode STREQUAL "missing-version")
+      set(_scp_solver_sdk_solver_info_error_pattern "requires a non-empty project VERSION")
+    elseif(_scp_solver_sdk_solver_info_mode STREQUAL "extra-argument")
+      set(_scp_solver_sdk_solver_info_error_pattern "expects 4 to 6 arguments")
+    elseif(_scp_solver_sdk_solver_info_mode STREQUAL "invalid-features")
+      set(_scp_solver_sdk_solver_info_error_pattern "must be a comma-separated identifier list")
+    elseif(_scp_solver_sdk_solver_info_mode STREQUAL "invalid-bool")
+      set(_scp_solver_sdk_solver_info_error_pattern "must be one of ON, OFF, TRUE, FALSE, 1, or 0")
+    endif()
+    add_test(
+      NAME "scp_solver_sdk_solver_info_${_scp_solver_sdk_solver_info_mode}"
+      COMMAND "${CMAKE_COMMAND}"
+        "-DSCP_SOLVER_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DFIXTURE_SOURCE_DIR=${_scp_solver_sdk_solver_info_fixture}"
+        "-DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests/solver-info-${_scp_solver_sdk_solver_info_mode}"
+        "-DTEST_GENERATOR=${CMAKE_GENERATOR}"
+        "-DTEST_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+        "-DTEST_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
+        "-DTEST_FAILURE_MODE=${_scp_solver_sdk_solver_info_mode}"
+        "-DEXPECTED_ERROR_PATTERN=${_scp_solver_sdk_solver_info_error_pattern}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/ValidateSolverInfo.cmake"
+    )
+  endforeach()
+
   set(_scp_solver_sdk_cuda_policy_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/ValidateOptionalCudaPolicy.cmake")
 
@@ -218,7 +342,8 @@ if(BUILD_TESTING)
   set(_scp_solver_sdk_cuda_cap_target_fixture
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/CudaCapTargetFixture")
   set(_scp_solver_sdk_cuda_cap_target_generator_arguments
-    -G "${CMAKE_GENERATOR}")
+    -G "${CMAKE_GENERATOR}"
+    "-DCMAKE_TRY_COMPILE_CONFIGURATION=Release")
   if(NOT "${CMAKE_GENERATOR_PLATFORM}" STREQUAL "")
     list(APPEND _scp_solver_sdk_cuda_cap_target_generator_arguments
       -A "${CMAKE_GENERATOR_PLATFORM}")
@@ -228,11 +353,14 @@ if(BUILD_TESTING)
       -T "${CMAKE_GENERATOR_TOOLSET}")
   endif()
   function(_scp_solver_sdk_add_cuda_cap_target_test test_name)
+    string(MD5 _scp_solver_sdk_fixture_hash "${test_name}")
+    string(SUBSTRING "${_scp_solver_sdk_fixture_hash}" 0 8
+      _scp_solver_sdk_fixture_hash)
     add_test(
       NAME "${test_name}"
       COMMAND "${CMAKE_COMMAND}"
         -S "${_scp_solver_sdk_cuda_cap_target_fixture}"
-        -B "${CMAKE_CURRENT_BINARY_DIR}/tests/${test_name}"
+        -B "${CMAKE_CURRENT_BINARY_DIR}/tests/cuda-target-${_scp_solver_sdk_fixture_hash}"
         ${_scp_solver_sdk_cuda_cap_target_generator_arguments}
         "-DSCP_SOLVER_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
         ${ARGN}
@@ -334,12 +462,15 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/ExpectCudaArgumentFailure.cmake")
   function(_scp_solver_sdk_add_cuda_argument_failure_test
       test_name failure_mode expected_error_pattern)
+    string(MD5 _scp_solver_sdk_fixture_hash "${test_name}")
+    string(SUBSTRING "${_scp_solver_sdk_fixture_hash}" 0 8
+      _scp_solver_sdk_fixture_hash)
     add_test(
       NAME "${test_name}"
       COMMAND "${CMAKE_COMMAND}"
         "-DSCP_SOLVER_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
         "-DFIXTURE_SOURCE_DIR=${_scp_solver_sdk_cuda_cap_target_fixture}"
-        "-DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests/${test_name}"
+        "-DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests/cuda-args-${_scp_solver_sdk_fixture_hash}"
         "-DTEST_GENERATOR=${CMAKE_GENERATOR}"
         "-DTEST_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
         "-DTEST_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
@@ -394,13 +525,17 @@ if(BUILD_TESTING)
         set(_scp_solver_sdk_cuda_cache_expected_error
           "must name an existing absolute executable")
       endif()
+      string(MD5 _scp_solver_sdk_fixture_hash
+        "scp_solver_sdk_cuda_cache_reject_${_scp_solver_sdk_cuda_cache_failure}")
+      string(SUBSTRING "${_scp_solver_sdk_fixture_hash}" 0 8
+        _scp_solver_sdk_fixture_hash)
       add_test(
         NAME
           "scp_solver_sdk_cuda_cache_reject_${_scp_solver_sdk_cuda_cache_failure}"
         COMMAND "${CMAKE_COMMAND}"
           "-DSCP_SOLVER_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
           "-DFIXTURE_SOURCE_DIR=${_scp_solver_sdk_cuda_cap_target_fixture}"
-          "-DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests/scp_solver_sdk_cuda_cache_reject_${_scp_solver_sdk_cuda_cache_failure}"
+          "-DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests/cuda-cache-${_scp_solver_sdk_fixture_hash}"
           "-DTEST_GENERATOR=${CMAKE_GENERATOR}"
           "-DTEST_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
           "-DTEST_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"

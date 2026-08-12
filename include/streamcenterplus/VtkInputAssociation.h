@@ -2,6 +2,7 @@
 
 #include <vtkCell.h>
 #include <vtkCellData.h>
+#include <vtkAbstractArray.h>
 #include <vtkDataSet.h>
 #include <vtkFieldData.h>
 #include <vtkImageData.h>
@@ -70,6 +71,19 @@ inline vtkSmartPointer<vtkDataSet> CellDataAtCellCenters(vtkDataSet* source) {
     if (structuredCellCount != cellCount) {
         throw std::runtime_error(
             "CellData tuple layout does not match a structured cell-center grid.");
+    }
+    for (int arrayIndex = 0; arrayIndex < cellData->GetNumberOfArrays(); ++arrayIndex) {
+        vtkAbstractArray* array = cellData->GetAbstractArray(arrayIndex);
+        if (array == nullptr || array->GetNumberOfTuples() != cellCount) {
+            const std::string arrayName =
+                array != nullptr && array->GetName() != nullptr
+                ? array->GetName()
+                : "#" + std::to_string(arrayIndex);
+            const vtkIdType tupleCount = array != nullptr ? array->GetNumberOfTuples() : -1;
+            throw std::runtime_error(
+                "VTK CellData array '" + arrayName + "' has " + std::to_string(tupleCount)
+                + " tuples; expected " + std::to_string(cellCount) + ".");
+        }
     }
 
     auto points = vtkSmartPointer<vtkPoints>::New();
