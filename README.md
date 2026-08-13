@@ -35,6 +35,15 @@ validated to remain inside the output directory and the completed manifest is
 published by atomic replacement, so a failed solve cannot expose a partially
 written catalog.
 
+For a PVD inventory entry, every `datasets[].file` value is resolved relative
+to the PVD, canonicalized, required to name an existing regular file, and
+required to remain inside the output directory after following symlinks. The
+manifest publishes the resulting canonical path relative to `output_directory`;
+it never copies an absolute, traversal, or symlink-escaping PVD attribute.
+Consumers that previously interpreted `datasets[].file` relative to the PVD
+must instead join it to `output_directory`. The PVD document itself is not
+rewritten, so VTK readers continue to use its original relative attributes.
+
 ## Requirements
 
 - CMake 3.24 or newer.
@@ -76,6 +85,13 @@ streamcenterplus_install_solver_bundle(
   my_solver DESTINATION "structured"
 )
 ```
+
+SDK tests are enabled by default only when `SCP-SolverSDK` is the top-level
+project, preserving the existing top-level `BUILD_TESTING` behavior. A parent
+that adds the SDK as `EXCLUDE_FROM_ALL` gets no SDK tests by default. To test an
+embedded SDK, enable the parent's CTest support and configure with
+`-DSCP_SOLVER_SDK_BUILD_TESTING=ON`; the SDK test executables are then included
+in the parent default build so registered tests are runnable.
 
 ## Use as an installed package
 

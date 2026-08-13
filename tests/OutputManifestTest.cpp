@@ -7,6 +7,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace manifest = streamcenterplus::manifest;
 
@@ -62,6 +63,94 @@ bool HasTemporaryManifest(const std::filesystem::path& directory) {
     return false;
 }
 
+void WriteFixtureFile(const std::filesystem::path& path) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream file(path, std::ios::binary);
+    file << "fixture";
+}
+
+std::string XmlAttributeEscape(const std::string& value) {
+    std::string escaped;
+    for (const char ch : value) {
+        switch (ch) {
+            case '&':
+                escaped += "&amp;";
+                break;
+            case '"':
+                escaped += "&quot;";
+                break;
+            case '<':
+                escaped += "&lt;";
+                break;
+            case '>':
+                escaped += "&gt;";
+                break;
+            default:
+                escaped.push_back(ch);
+                break;
+        }
+    }
+    return escaped;
+}
+
+void WriteSingleDataSetPvd(const std::filesystem::path& path,
+                           const std::string& referencedFile) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream pvd(path, std::ios::binary);
+    pvd << "<VTKFile type=\"Collection\"><Collection>"
+           "<DataSet file=\""
+        << XmlAttributeEscape(referencedFile)
+        << "\"/></Collection></VTKFile>";
+}
+
+bool CreateDirectoryLink(const std::filesystem::path& target,
+                         const std::filesystem::path& link) {
+#ifdef _WIN32
+    constexpr DWORD allowUnprivilegedCreate = 0x2u;
+    if (CreateSymbolicLinkW(link.c_str(),
+                            target.c_str(),
+                            SYMBOLIC_LINK_FLAG_DIRECTORY | allowUnprivilegedCreate)
+        || CreateSymbolicLinkW(
+            link.c_str(), target.c_str(), SYMBOLIC_LINK_FLAG_DIRECTORY)) {
+        return true;
+    }
+
+    std::wstring command = L"cmd.exe /d /c mklink /J \"";
+    command += link.native();
+    command += L"\" \"";
+    command += target.native();
+    command += L"\"";
+    std::vector<wchar_t> commandLine(command.begin(), command.end());
+    commandLine.push_back(L'\0');
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(nullptr,
+                        commandLine.data(),
+                        nullptr,
+                        nullptr,
+                        FALSE,
+                        CREATE_NO_WINDOW,
+                        nullptr,
+                        nullptr,
+                        &startup,
+                        &process)) {
+        return false;
+    }
+    const DWORD waitResult = WaitForSingleObject(process.hProcess, INFINITE);
+    DWORD exitCode = 1;
+    const bool exited = waitResult == WAIT_OBJECT_0
+        && GetExitCodeProcess(process.hProcess, &exitCode) != FALSE;
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    return exited && exitCode == 0;
+#else
+    std::error_code error;
+    std::filesystem::create_directory_symlink(target, link, error);
+    return !error;
+#endif
+}
+
 }  // namespace
 
 int main() {
@@ -72,17 +161,22 @@ int main() {
     }
 
     TemporaryDirectory pvdDirectory("pvd");
-    const std::filesystem::path pvdPath = pvdDirectory.path / "collection.pvd";
+    const std::filesystem::path pvdPath =
+        pvdDirectory.path / "collections" / "collection.pvd";
+    WriteFixtureFile(pvdDirectory.path / "collections" / "frames" / "a&b.vti");
+    WriteFixtureFile(pvdDirectory.path / "collections" / "frames" / "c.vti");
+    WriteFixtureFile(pvdDirectory.path / "collections" / "frames" / "d.vti");
     {
+        std::filesystem::create_directories(pvdPath.parent_path());
         std::ofstream pvd(pvdPath, std::ios::binary);
         pvd << "<?xml version='1.0'?>\n"
                "<VTKFile type='Collection' version='0.1'>\n"
                "  <Collection>\n"
                "    <DataSet\n"
                "      timestep='1.5'\n"
-               "      file='a&amp;b.vti'/>\n"
-               "    <DataSet timestep=\"2\" file=\"c.vti\"/>"
-               "<DataSet timestep=\"3\" file=\"d.vti\"/>\n"
+               "      file='frames/./a&amp;b.vti'/>\n"
+               "    <DataSet timestep=\"2\" file=\"frames/c.vti\"/>"
+               "<DataSet timestep=\"3\" file=\"frames/d.vti\"/>\n"
                "  </Collection>\n"
                "</VTKFile>\n";
     }
@@ -90,7 +184,8 @@ int main() {
     manifest::WritePvdFile(pvdJson, pvdPath, pvdDirectory.path, "");
     const std::string pvdPayload = pvdJson.str();
     if (CountOccurrences(pvdPayload, "\"file\":") != 3
-        || pvdPayload.find("\"a&b.vti\"") == std::string::npos) {
+        || pvdPayload.find("\"collections/frames/a&b.vti\"") == std::string::npos
+        || pvdPayload.find("frames/./a&b.vti") != std::string::npos) {
         return Fail("A legal PVD with multiline, single-quoted, entity-encoded, or adjacent DataSet elements was misread.");
     }
 
@@ -107,6 +202,132 @@ int main() {
             },
             "type must be Collection")) {
         return Fail("A VTK XML file whose type was not Collection was accepted as PVD.");
+    }
+
+    const std::filesystem::path absoluteReferencePvd =
+        pvdDirectory.path / "absolute-reference.pvd";
+    WriteSingleDataSetPvd(
+        absoluteReferencePvd,
+        manifest::VisualizationPathToUtf8(
+            std::filesystem::absolute(
+                pvdDirectory.path / "collections" / "frames" / "c.vti")));
+    if (!ThrowsContaining(
+            [&] {
+                std::ostringstream ignored;
+                manifest::WritePvdFile(
+                    ignored, absoluteReferencePvd, pvdDirectory.path, "");
+            },
+            "must be relative")) {
+        return Fail("A PVD DataSet absolute file path was accepted.");
+    }
+
+    TemporaryDirectory outside("outside");
+    const std::filesystem::path outsideFile = outside.path / "outside.vti";
+    WriteFixtureFile(outsideFile);
+    const std::filesystem::path parentEscapePvd =
+        pvdDirectory.path / "parent-escape.pvd";
+    WriteSingleDataSetPvd(
+        parentEscapePvd,
+        manifest::VisualizationPathToUtf8(
+            std::filesystem::relative(outsideFile, pvdDirectory.path)));
+    if (!ThrowsContaining(
+            [&] {
+                std::ostringstream ignored;
+                manifest::WritePvdFile(
+                    ignored, parentEscapePvd, pvdDirectory.path, "");
+            },
+            "escapes the output directory")) {
+        return Fail("A PVD DataSet parent traversal outside the output directory was accepted.");
+    }
+
+    const std::filesystem::path missingReferencePvd =
+        pvdDirectory.path / "missing-reference.pvd";
+    WriteSingleDataSetPvd(missingReferencePvd, "missing/frame.vti");
+    if (!ThrowsContaining(
+            [&] {
+                std::ostringstream ignored;
+                manifest::WritePvdFile(
+                    ignored, missingReferencePvd, pvdDirectory.path, "");
+            },
+            "does not exist")) {
+        return Fail("A PVD DataSet missing file was accepted.");
+    }
+
+    const std::filesystem::path directoryReference =
+        pvdDirectory.path / "directory-reference.vti";
+    std::filesystem::create_directories(directoryReference);
+    const std::filesystem::path directoryReferencePvd =
+        pvdDirectory.path / "directory-reference.pvd";
+    WriteSingleDataSetPvd(directoryReferencePvd, "directory-reference.vti");
+    if (!ThrowsContaining(
+            [&] {
+                std::ostringstream ignored;
+                manifest::WritePvdFile(
+                    ignored, directoryReferencePvd, pvdDirectory.path, "");
+            },
+            "regular file")) {
+        return Fail("A PVD DataSet directory reference was accepted as a file.");
+    }
+
+    const std::filesystem::path escapingLink =
+        pvdDirectory.path / "escaping-link";
+    if (!CreateDirectoryLink(outside.path, escapingLink)) {
+        return Fail("Could not create the directory link needed by the PVD escape test.");
+    }
+    const std::filesystem::path linkEscapePvd =
+        pvdDirectory.path / "symlink-escape.pvd";
+    WriteSingleDataSetPvd(linkEscapePvd, "escaping-link/outside.vti");
+    if (!ThrowsContaining(
+            [&] {
+                std::ostringstream ignored;
+                manifest::WritePvdFile(
+                    ignored, linkEscapePvd, pvdDirectory.path, "");
+            },
+            "escapes the output directory")) {
+        return Fail("A PVD DataSet directory link escaping the output directory was accepted.");
+    }
+
+    const std::filesystem::path canonicalTarget =
+        pvdDirectory.path / "canonical" / "target.vti";
+    WriteFixtureFile(canonicalTarget);
+    const std::filesystem::path safeLink =
+        pvdDirectory.path / "safe-link";
+    if (!CreateDirectoryLink(canonicalTarget.parent_path(), safeLink)) {
+        return Fail("Could not create the second directory link needed by the PVD safety test.");
+    }
+    const std::filesystem::path safeLinkPvd =
+        pvdDirectory.path / "safe-symlink.pvd";
+    WriteSingleDataSetPvd(safeLinkPvd, "safe-link/target.vti");
+    std::ostringstream safeLinkJson;
+    manifest::WritePvdFile(
+        safeLinkJson, safeLinkPvd, pvdDirectory.path, "");
+    if (safeLinkJson.str().find("\"canonical/target.vti\"")
+        == std::string::npos) {
+        return Fail("A contained PVD DataSet directory link was not published as its canonical path.");
+    }
+
+    TemporaryDirectory integratedPvdDirectory("integrated-pvd");
+    const std::filesystem::path integratedDataPath =
+        integratedPvdDirectory.path / "collections" / "frames" / "frame.vtkhdf";
+    WriteFixtureFile(integratedDataPath);
+    WriteSingleDataSetPvd(
+        integratedPvdDirectory.path / "collections" / "series.pvd",
+        "frames/./frame.vtkhdf");
+    manifest::WriteOutputManifest(integratedPvdDirectory.path, "DFT");
+    std::ifstream integratedManifest(
+        integratedPvdDirectory.path / "output_manifest.json", std::ios::binary);
+    if (!integratedManifest) {
+        return Fail("WriteOutputManifest did not create its manifest file.");
+    }
+    std::ostringstream integratedManifestBuffer;
+    integratedManifestBuffer << integratedManifest.rdbuf();
+    const std::string integratedManifestPayload = integratedManifestBuffer.str();
+    if (integratedManifestPayload.find(
+               "\"file\": \"collections/frames/frame.vtkhdf\"")
+            == std::string::npos
+        || integratedManifestPayload.find("frames/./frame.vtkhdf")
+            != std::string::npos) {
+        return Fail("WriteOutputManifest did not publish the safe canonical PVD DataSet path.");
     }
 
     const std::filesystem::path invalidVti = pvdDirectory.path / "invalid.vti";
@@ -142,12 +363,6 @@ int main() {
         return Fail("Failed output-manifest generation left a temporary manifest behind.");
     }
 
-    TemporaryDirectory outside("outside");
-    const std::filesystem::path outsideFile = outside.path / "outside.vti";
-    {
-        std::ofstream data(outsideFile);
-        data << "fixture";
-    }
     if (!ThrowsContaining(
             [&] { manifest::RelativePath(outsideFile, pvdDirectory.path); },
             "escapes the output directory")) {

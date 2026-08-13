@@ -11,7 +11,12 @@ endif()
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
-include(CTest)
+option(SCP_SOLVER_SDK_BUILD_TESTING
+  "Build and register SCP-SolverSDK tests"
+  ${PROJECT_IS_TOP_LEVEL})
+if(SCP_SOLVER_SDK_BUILD_TESTING)
+  include(CTest)
+endif()
 
 add_library(SCP_SolverSDK INTERFACE)
 add_library(SCP::SolverSDK ALIAS SCP_SolverSDK)
@@ -61,16 +66,31 @@ install(FILES
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/SCPSolverSDK"
 )
 
-if(BUILD_TESTING)
+if(SCP_SOLVER_SDK_BUILD_TESTING AND BUILD_TESTING)
   add_executable(SCPSolverSDKVisualizationManifestTests
     tests/VisualizationManifestTest.cpp
   )
+  set_property(TARGET SCPSolverSDKVisualizationManifestTests
+    PROPERTY EXCLUDE_FROM_ALL FALSE)
   target_link_libraries(SCPSolverSDKVisualizationManifestTests PRIVATE
     SCP::SolverSDK
   )
   add_test(
     NAME scp_solver_sdk_visualization_manifest
     COMMAND SCPSolverSDKVisualizationManifestTests
+  )
+
+  add_test(
+    NAME scp_solver_sdk_nested_parent
+    COMMAND "${CMAKE_COMMAND}"
+      "-DSCP_SOLVER_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+      "-DFIXTURE_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/NestedParentFixture"
+      "-DFIXTURE_BINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}/np"
+      "-DTEST_GENERATOR=${CMAKE_GENERATOR}"
+      "-DTEST_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+      "-DTEST_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
+      "-DTEST_CTEST_COMMAND=${CMAKE_CTEST_COMMAND}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/ValidateNestedParent.cmake"
   )
 
   find_package(VTK QUIET COMPONENTS
@@ -85,6 +105,8 @@ if(BUILD_TESTING)
     add_executable(SCPSolverSDKVtkHdfTokenTests
       tests/VtkHdfTokenTest.cpp
     )
+    set_property(TARGET SCPSolverSDKVtkHdfTokenTests
+      PROPERTY EXCLUDE_FROM_ALL FALSE)
     target_link_libraries(SCPSolverSDKVtkHdfTokenTests PRIVATE
       SCP::SolverSDK
       VTK::CommonCore
@@ -99,6 +121,8 @@ if(BUILD_TESTING)
     add_executable(SCPSolverSDKVtkInputAssociationTests
       tests/VtkInputAssociationTest.cpp
     )
+    set_property(TARGET SCPSolverSDKVtkInputAssociationTests
+      PROPERTY EXCLUDE_FROM_ALL FALSE)
     target_link_libraries(SCPSolverSDKVtkInputAssociationTests PRIVATE
       SCP::SolverSDK
       VTK::CommonCore
@@ -112,6 +136,8 @@ if(BUILD_TESTING)
     add_executable(SCPSolverSDKOutputManifestTests
       tests/OutputManifestTest.cpp
     )
+    set_property(TARGET SCPSolverSDKOutputManifestTests
+      PROPERTY EXCLUDE_FROM_ALL FALSE)
     target_link_libraries(SCPSolverSDKOutputManifestTests PRIVATE
       SCP::SolverSDK
       VTK::CommonCore

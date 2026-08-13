@@ -307,6 +307,73 @@ inline std::string RelativePath(const std::filesystem::path& path, const std::fi
     return VisualizationPathToUtf8(relative);
 }
 
+inline std::string ResolvePvdDataSetManifestPath(
+    const std::filesystem::path& pvdPath,
+    const std::filesystem::path& outputDir,
+    const std::string& referencedFile) {
+    ValidateVisualizationUtf8(referencedFile);
+    const std::filesystem::path referencedPath =
+        VisualizationPathFromUtf8(referencedFile);
+    if (referencedPath.is_absolute() || referencedPath.has_root_name()
+        || referencedPath.has_root_directory()) {
+        throw std::runtime_error("PVD DataSet file paths must be relative: "
+                                 + referencedFile);
+    }
+
+    std::error_code error;
+    const std::filesystem::path absoluteOutput =
+        std::filesystem::absolute(outputDir, error);
+    if (error) {
+        throw std::runtime_error("Cannot resolve the output manifest directory: "
+                                 + VisualizationPathToUtf8(outputDir) + ": "
+                                 + error.message());
+    }
+    const std::filesystem::path canonicalOutput =
+        std::filesystem::weakly_canonical(absoluteOutput, error);
+    if (error) {
+        throw std::runtime_error("Cannot resolve the output manifest directory: "
+                                 + VisualizationPathToUtf8(outputDir) + ": "
+                                 + error.message());
+    }
+
+    const std::filesystem::path absolutePvd =
+        std::filesystem::absolute(pvdPath, error);
+    if (error) {
+        throw std::runtime_error("Cannot resolve PVD collection path: "
+                                 + VisualizationPathToUtf8(pvdPath) + ": "
+                                 + error.message());
+    }
+    const std::filesystem::path referencedCandidate =
+        absolutePvd.parent_path() / referencedPath;
+    const std::filesystem::path canonicalReferenced =
+        std::filesystem::canonical(referencedCandidate, error);
+    if (error) {
+        throw std::runtime_error("PVD DataSet file does not exist or cannot be resolved: "
+                                 + referencedFile + " (collection: "
+                                 + VisualizationPathToUtf8(pvdPath) + ")");
+    }
+    if (!std::filesystem::is_regular_file(canonicalReferenced, error) || error) {
+        throw std::runtime_error("PVD DataSet file must reference a regular file: "
+                                 + referencedFile + " (collection: "
+                                 + VisualizationPathToUtf8(pvdPath) + ")");
+    }
+    if (!VisualizationPathIsWithin(canonicalReferenced, canonicalOutput)) {
+        throw std::runtime_error("PVD DataSet file escapes the output directory: "
+                                 + referencedFile + " (collection: "
+                                 + VisualizationPathToUtf8(pvdPath) + ")");
+    }
+
+    const std::filesystem::path relativeReferenced =
+        std::filesystem::relative(canonicalReferenced, canonicalOutput, error);
+    if (error || relativeReferenced.empty() || relativeReferenced.is_absolute()
+        || *relativeReferenced.begin() == "..") {
+        throw std::runtime_error("Cannot publish a safe PVD DataSet manifest path: "
+                                 + referencedFile + " (collection: "
+                                 + VisualizationPathToUtf8(pvdPath) + ")");
+    }
+    return VisualizationPathToUtf8(relativeReferenced.lexically_normal());
+}
+
 inline vtkSmartPointer<vtkCallbackCommand> ObserveVtkReaderErrors(vtkObject* reader,
                                                                    bool* hadError) {
     auto observer = vtkSmartPointer<vtkCallbackCommand>::New();
@@ -500,6 +567,8 @@ inline void WritePvdFile(std::ostream& out,
             throw std::runtime_error("PVD DataSet element is missing a non-empty file attribute: "
                                      + fileName);
         }
+        const std::string safeReferencedFile = ResolvePvdDataSetManifestPath(
+            path, outputDir, referencedFile);
         out << (first ? "\n" : ",\n");
         first = false;
         out << indent << "    {";
@@ -511,8 +580,10 @@ inline void WritePvdFile(std::ostream& out,
             if (name == nullptr || value == nullptr) {
                 throw std::runtime_error("Cannot read a PVD DataSet attribute: " + fileName);
             }
+            const std::string serializedValue =
+                std::string(name) == "file" ? safeReferencedFile : value;
             out << (attributeIndex == 0 ? "" : ", ")
-                << Quote(name) << ": " << Quote(value);
+                << Quote(name) << ": " << Quote(serializedValue);
         }
         out << "}";
     }
