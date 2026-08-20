@@ -81,6 +81,13 @@ if(SCP_SOLVER_SDK_BUILD_TESTING AND BUILD_TESTING)
   )
 
   add_test(
+    NAME scp_solver_sdk_release_scripts
+    COMMAND "${CMAKE_COMMAND}"
+      "-DSCP_SOLVER_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/ValidateReleaseScripts.cmake"
+  )
+
+  add_test(
     NAME scp_solver_sdk_nested_parent
     COMMAND "${CMAKE_COMMAND}"
       "-DSCP_SOLVER_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"

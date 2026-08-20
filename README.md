@@ -35,6 +35,16 @@ validated to remain inside the output directory and the completed manifest is
 published by atomic replacement, so a failed solve cannot expose a partially
 written catalog.
 
+Visualization quantity and per-variant mapping associations are limited to
+`point` and `cell`, the associations supported by the current GUI result
+consumer. Producers must not publish `field` or other association values until
+the complete consumer chain supports them.
+
+`MakeStepToken` serializes a virtual VTKHDF frame with the
+`|vtkhdf_step=<digits>` suffix. On POSIX, an existing path with that literal
+suffix takes precedence as an ordinary file path; a virtual token is parsed
+only when the literal path does not exist.
+
 For a PVD inventory entry, every `datasets[].file` value is resolved relative
 to the PVD, canonicalized, required to name an existing regular file, and
 required to remain inside the output directory after following symlinks. The
@@ -67,7 +77,7 @@ Linux:
 bash ./install.sh
 ```
 
-The installation is fixed inside this repository at `release/<platform>-<architecture>`. Build trees are fixed under `.build/`; both directories are ignored by Git. Installers expose no path parameters or environment-variable overrides. Use `-Clean` on Windows or `--clean` on Linux to remove only the SDK build tree before rebuilding.
+The installation is fixed inside this repository at `release/<platform>-<architecture>`. Build trees are fixed under `.build/`; both directories are ignored by Git. Installers expose no path parameters or environment-variable overrides. Use `-Clean` on Windows or `--clean` on Linux to remove only the SDK build tree before rebuilding; this cleanup does not remove the existing release directory.
 
 ## Use from the Streamcenter+ superproject
 

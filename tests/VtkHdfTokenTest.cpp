@@ -87,6 +87,21 @@ int main() {
     }
 
     TemporaryDirectory temporary;
+#if !defined(_WIN32)
+    const std::filesystem::path markerNamedFile =
+        temporary.path / "frame.vtkhdf|vtkhdf_step=000000000042";
+    {
+        std::ofstream output(markerNamedFile, std::ios::binary);
+        output << "fixture";
+    }
+    parsedPath.clear();
+    parsedStep = 123;
+    if (vtkhdf::ParseStepToken(markerNamedFile, &parsedPath, &parsedStep)
+        || parsedPath != markerNamedFile || parsedStep != -1) {
+        return Fail("An existing POSIX path ending in the VTKHDF token marker was misparsed.");
+    }
+#endif
+
     const std::filesystem::path missing = temporary.path / "missing.vtkhdf";
     if (!ThrowsRuntimeError([&] { vtkhdf::ExpandTimeSteps(missing); })
         || !ThrowsRuntimeError([&] { vtkhdf::ReadDataObject(missing); })

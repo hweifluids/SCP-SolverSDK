@@ -9,6 +9,12 @@
 #include <sstream>
 #include <string>
 
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace {
 
 namespace manifest = streamcenterplus::manifest;
@@ -69,6 +75,14 @@ bool ThrowsContaining(const std::function<void()>& action, const std::string& ex
         return expected.empty() || std::string(error.what()).find(expected) != std::string::npos;
     }
     return false;
+}
+
+std::string CurrentProcessId() {
+#if defined(_WIN32)
+    return std::to_string(static_cast<unsigned long long>(::_getpid()));
+#else
+    return std::to_string(static_cast<unsigned long long>(::getpid()));
+#endif
 }
 
 manifest::VisualizationCatalog MakeValidCatalog() {
@@ -356,6 +370,30 @@ int main() {
         return Fail("A duplicate variant quantity mapping was accepted.");
     }
 
+    manifest::VisualizationCatalog cellAssociation = validCatalog;
+    cellAssociation.quantities.front().association = "cell";
+    cellAssociation.variants.front().quantities.front().association = "cell";
+    try {
+        manifest::ValidateVisualizationCatalog(cellAssociation, output.path);
+    } catch (const std::exception& error) {
+        return Fail(std::string("A cell-associated quantity mapping was rejected: ") + error.what());
+    }
+
+    invalidMapping = validCatalog;
+    invalidMapping.quantities.front().association = "field";
+    if (!ThrowsContaining(
+            [&] { manifest::ValidateVisualizationCatalog(invalidMapping, output.path); },
+            "association must be point or cell")) {
+        return Fail("An unsupported default quantity association was accepted.");
+    }
+    invalidMapping = validCatalog;
+    invalidMapping.variants.front().quantities.front().association = "field";
+    if (!ThrowsContaining(
+            [&] { manifest::ValidateVisualizationCatalog(invalidMapping, output.path); },
+            "association must be point or cell")) {
+        return Fail("An unsupported variant quantity association was accepted.");
+    }
+
     TemporaryDirectory outside("outside");
     const std::filesystem::path outsideFile = outside.path / "outside.vti";
     {
@@ -446,6 +484,9 @@ int main() {
     if (localizedRunId.find('_') != std::string::npos
         || localizedRunId.find_first_not_of("0123456789-") != std::string::npos) {
         return Fail("Visualization run IDs inherited global numeric punctuation.");
+    }
+    if (localizedRunId.find("-" + CurrentProcessId() + "-") == std::string::npos) {
+        return Fail("Visualization run IDs did not include the current process identifier.");
     }
 
     return 0;

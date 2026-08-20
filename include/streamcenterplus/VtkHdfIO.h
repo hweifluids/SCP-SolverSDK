@@ -18,6 +18,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace streamcenterplus::vtkhdf {
@@ -83,6 +84,24 @@ inline bool ParseStepToken(const std::filesystem::path& tokenPath,
         }
         return false;
     }
+#if !defined(_WIN32)
+    std::error_code statusError;
+    const std::filesystem::file_status nativePathStatus =
+        std::filesystem::symlink_status(tokenPath, statusError);
+    if (statusError) {
+        throw std::runtime_error("Cannot inspect VTKHDF path: " + token + ": "
+                                 + statusError.message());
+    }
+    if (std::filesystem::exists(nativePathStatus)) {
+        if (realPath != nullptr) {
+            *realPath = tokenPath;
+        }
+        if (step != nullptr) {
+            *step = -1;
+        }
+        return false;
+    }
+#endif
     const std::string realPathText = token.substr(0, marker);
     const std::string stepText =
         token.substr(marker + std::char_traits<char>::length(kStepMarker));

@@ -18,6 +18,12 @@
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace streamcenterplus::manifest {
 
 struct VisualizationAxisValue {
@@ -117,6 +123,10 @@ inline void ValidateVisualizationUtf8(const std::string& value) {
         }
         index += continuationCount + 1;
     }
+}
+
+inline bool IsSupportedVisualizationAssociation(const std::string& association) {
+    return association == "point" || association == "cell";
 }
 
 inline std::uint32_t VisualizationUtf8CodePointAt(const std::string& value,
@@ -369,9 +379,14 @@ inline std::string MakeVisualizationRunId() {
     const auto ticks = std::chrono::duration_cast<std::chrono::microseconds>(
                            std::chrono::system_clock::now().time_since_epoch())
                            .count();
+#if defined(_WIN32)
+    const auto processId = static_cast<std::uint64_t>(::_getpid());
+#else
+    const auto processId = static_cast<std::uint64_t>(::getpid());
+#endif
     std::ostringstream out;
     out.imbue(std::locale::classic());
-    out << ticks << "-" << sequence.fetch_add(1, std::memory_order_relaxed);
+    out << ticks << "-" << processId << "-" << sequence.fetch_add(1, std::memory_order_relaxed);
     return out.str();
 }
 
@@ -453,9 +468,9 @@ inline void ValidateVisualizationCatalog(const VisualizationCatalog& catalog,
                 "Visualization catalog quantity arrayName must not contain embedded NUL or boundary whitespace: "
                 + quantity.id);
         }
-        if (quantity.association != "point" && quantity.association != "cell"
-            && quantity.association != "field") {
-            throw std::runtime_error("Visualization catalog quantity association is invalid: " + quantity.id);
+        if (!IsSupportedVisualizationAssociation(quantity.association)) {
+            throw std::runtime_error(
+                "Visualization catalog quantity association must be point or cell: " + quantity.id);
         }
     }
 
@@ -517,6 +532,11 @@ inline void ValidateVisualizationCatalog(const VisualizationCatalog& catalog,
                 || VisualizationHasBoundaryWhitespace(mapping.arrayName)) {
                 throw std::runtime_error(
                     "Visualization catalog variant quantity arrayName must be non-empty without embedded NUL or boundary whitespace: "
+                    + mapping.quantityId);
+            }
+            if (!IsSupportedVisualizationAssociation(mapping.association)) {
+                throw std::runtime_error(
+                    "Visualization catalog variant quantity association must be point or cell: "
                     + mapping.quantityId);
             }
             if (!mappedQuantityIds.insert(mapping.quantityId).second) {
