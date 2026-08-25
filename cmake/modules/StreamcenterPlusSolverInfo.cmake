@@ -1,5 +1,75 @@
 include_guard(GLOBAL)
 
+function(_streamcenterplus_validate_cuda_capability_dependency
+    dependency expected_capability visited_targets)
+  if(NOT TARGET "${dependency}")
+    return()
+  endif()
+
+  get_property(_streamcenterplus_aliased_target
+    TARGET "${dependency}" PROPERTY ALIASED_TARGET)
+  if(NOT "${_streamcenterplus_aliased_target}" STREQUAL "")
+    set(dependency "${_streamcenterplus_aliased_target}")
+  endif()
+  list(FIND visited_targets "${dependency}" _streamcenterplus_visited_index)
+  if(NOT _streamcenterplus_visited_index EQUAL -1)
+    return()
+  endif()
+  list(APPEND visited_targets "${dependency}")
+
+  get_property(_streamcenterplus_interface_capability_is_set
+    TARGET "${dependency}" PROPERTY
+    INTERFACE_STREAMCENTERPLUS_CUDA_CAPABILITY SET)
+  if(_streamcenterplus_interface_capability_is_set)
+    get_target_property(_streamcenterplus_dependency_capability
+      "${dependency}" INTERFACE_STREAMCENTERPLUS_CUDA_CAPABILITY)
+    if(NOT "${_streamcenterplus_dependency_capability}" STREQUAL
+           "${expected_capability}")
+      message(FATAL_ERROR
+        "Solver info CUDA capability '${expected_capability}' conflicts with "
+        "the OptionalCuda capability '${_streamcenterplus_dependency_capability}' "
+        "published by linked target '${dependency}'.")
+    endif()
+  endif()
+
+  get_target_property(_streamcenterplus_interface_links
+    "${dependency}" INTERFACE_LINK_LIBRARIES)
+  if(_streamcenterplus_interface_links STREQUAL
+     "_streamcenterplus_interface_links-NOTFOUND")
+    return()
+  endif()
+  foreach(_streamcenterplus_interface_link IN LISTS
+      _streamcenterplus_interface_links)
+    if(_streamcenterplus_interface_link MATCHES "^\\$<LINK_ONLY:([^>]+)>$")
+      set(_streamcenterplus_interface_link "${CMAKE_MATCH_1}")
+    endif()
+    _streamcenterplus_validate_cuda_capability_dependency(
+      "${_streamcenterplus_interface_link}" "${expected_capability}"
+      "${visited_targets}")
+  endforeach()
+endfunction()
+
+function(_streamcenterplus_validate_linked_cuda_capability target expected_capability)
+  if(NOT TARGET "${target}")
+    return()
+  endif()
+
+  get_target_property(_streamcenterplus_linked_targets
+    "${target}" LINK_LIBRARIES)
+  if(_streamcenterplus_linked_targets STREQUAL
+     "_streamcenterplus_linked_targets-NOTFOUND")
+    return()
+  endif()
+  foreach(_streamcenterplus_linked_target IN LISTS
+      _streamcenterplus_linked_targets)
+    if(_streamcenterplus_linked_target MATCHES "^\\$<LINK_ONLY:([^>]+)>$")
+      set(_streamcenterplus_linked_target "${CMAKE_MATCH_1}")
+    endif()
+    _streamcenterplus_validate_cuda_capability_dependency(
+      "${_streamcenterplus_linked_target}" "${expected_capability}" "")
+  endforeach()
+endfunction()
+
 function(streamcenterplus_configure_solver_info target solver_name has_cpu has_cuda)
   if(ARGC LESS 4 OR ARGC GREATER 6)
     message(FATAL_ERROR
@@ -53,6 +123,31 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
     set(_streamcenterplus_has_cuda 0)
   endif()
 
+  get_property(_streamcenterplus_cuda_capability_is_set
+    TARGET "${target}" PROPERTY STREAMCENTERPLUS_CUDA_CAPABILITY SET)
+  if(_streamcenterplus_cuda_capability_is_set)
+    get_target_property(_streamcenterplus_existing_cuda_capability
+      "${target}" STREAMCENTERPLUS_CUDA_CAPABILITY)
+    if(NOT "${_streamcenterplus_existing_cuda_capability}" STREQUAL
+           "${_streamcenterplus_has_cuda}")
+      message(FATAL_ERROR
+        "Solver info CUDA capability '${_streamcenterplus_has_cuda}' for target "
+        "'${target}' conflicts with its existing SolverSDK CUDA capability "
+        "'${_streamcenterplus_existing_cuda_capability}'.")
+    endif()
+  endif()
+  # Check target-local capability immediately and inspect linked OptionalCuda
+  # targets at directory end, after callers have added their implementation
+  # libraries. This preserves the existing helper call order used by solvers.
+  set_property(TARGET "${target}" PROPERTY
+    STREAMCENTERPLUS_CUDA_CAPABILITY "${_streamcenterplus_has_cuda}")
+  # DEFER evaluates ordinary variable references only at directory end, after
+  # this function scope has gone away. Schedule bracket arguments through EVAL
+  # so the target and expected value are captured now.
+  cmake_language(EVAL CODE
+    "cmake_language(DEFER CALL _streamcenterplus_validate_linked_cuda_capability "
+    "[[${target}]] [[${_streamcenterplus_has_cuda}]])")
+
   set(_streamcenterplus_solver_type "structuredmesh")
   if(ARGC GREATER 4)
     set(_streamcenterplus_solver_type "${ARGV4}")
@@ -79,7 +174,7 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
     STREAMCENTERPLUS_SOLVER_TYPE="${_streamcenterplus_solver_type}"
     STREAMCENTERPLUS_BUILD_DATE="${_streamcenterplus_build_date}"
     STREAMCENTERPLUS_HAS_CPU=${_streamcenterplus_has_cpu}
-    STREAMCENTERPLUS_HAS_CUDA=${_streamcenterplus_has_cuda}
+    STREAMCENTERPLUS_SOLVER_HAS_CUDA=${_streamcenterplus_has_cuda}
     STREAMCENTERPLUS_MESH_FEATURES="${_streamcenterplus_mesh_features}"
   )
   set_target_properties("${target}" PROPERTIES

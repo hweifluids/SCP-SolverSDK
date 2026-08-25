@@ -64,6 +64,7 @@ struct VisualizationVariantQuantity {
 struct VisualizationVariant {
     std::map<std::string, std::string> selectors;
     std::string path;
+    // -1 omits step_index; every other accepted value identifies a VTKHDF step.
     int stepIndex = -1;
     bool hasReaderTime = false;
     double readerTime = 0.0;
@@ -495,6 +496,10 @@ inline void ValidateVisualizationCatalog(const VisualizationCatalog& catalog,
                                      + variant.path);
         }
         ValidateVisualizationFileWithinOutput(resolved, outputDir, variant.path);
+        if (variant.stepIndex < -1) {
+            throw std::runtime_error(
+                "Visualization catalog variant stepIndex must be -1 or non-negative.");
+        }
         if (variant.hasReaderTime && !std::isfinite(variant.readerTime)) {
             throw std::runtime_error("Visualization catalog variant readerTime must be finite.");
         }

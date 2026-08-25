@@ -23,8 +23,8 @@ function Resolve-ComponentSuperprojectRoot {
 }
 
 $moduleRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
-$platformTag = "windows-$architecture"
+# Match install.ps1: the smoke consumer uses the fixed x64 Visual Studio target.
+$platformTag = "windows-x64"
 $sdkRelease = Join-Path (Join-Path $moduleRoot "release") $platformTag
 $superprojectRoot = Resolve-ComponentSuperprojectRoot -ModuleRoot $moduleRoot -ComponentName "SCP-SolverSDK"
 $testRoot = if ($null -ne $superprojectRoot) { Join-Path $superprojectRoot ".tests" } else { Join-Path $moduleRoot ".tests" }

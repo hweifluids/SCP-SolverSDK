@@ -295,6 +295,14 @@ int main() {
         return Fail("An infinite readerTime was accepted.");
     }
 
+    manifest::VisualizationCatalog invalidStepIndex = validCatalog;
+    invalidStepIndex.variants.front().stepIndex = -2;
+    if (!ThrowsContaining(
+            [&] { manifest::ValidateVisualizationCatalog(invalidStepIndex, output.path); },
+            "stepIndex must be -1 or non-negative")) {
+        return Fail("A visualization step index below the omitted-value sentinel was accepted.");
+    }
+
     manifest::VisualizationCatalog symbolicNumeric = validCatalog;
     symbolicNumeric.axes.front().values = {{"late", "Late"}};
     symbolicNumeric.axes.front().defaultValue = "late";

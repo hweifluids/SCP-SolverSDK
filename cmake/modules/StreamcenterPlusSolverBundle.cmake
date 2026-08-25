@@ -41,6 +41,11 @@ function(streamcenterplus_install_solver_bundle target)
     message(FATAL_ERROR
       "streamcenterplus_install_solver_bundle: unexpected arguments: ${ARG_UNPARSED_ARGUMENTS}")
   endif()
+  if(ARG_KEYWORDS_MISSING_VALUES)
+    message(FATAL_ERROR
+      "streamcenterplus_install_solver_bundle: missing values for: "
+      "${ARG_KEYWORDS_MISSING_VALUES}")
+  endif()
   if(NOT DEFINED ARG_DESTINATION OR ARG_DESTINATION STREQUAL "")
     set(ARG_DESTINATION ".")
   endif()

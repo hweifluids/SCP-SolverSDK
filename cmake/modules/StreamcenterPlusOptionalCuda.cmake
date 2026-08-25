@@ -101,12 +101,12 @@ unset(_streamcenterplus_cuda_architecture_threads_default)
 unset(_streamcenterplus_cuda_architecture_cache_type)
 unset(_streamcenterplus_cuda_architecture_cache_type_set)
 set_property(CACHE STREAMCENTERPLUS_CUDA_ARCHITECTURE_THREADS PROPERTY STRINGS
-    "1" "2" "4" "8" "12" "0")
-set(_streamcenterplus_cuda_architecture_thread_choices 0 1 2 4 8 12)
+    "1" "2" "3" "4" "8" "12" "0")
+set(_streamcenterplus_cuda_architecture_thread_choices 0 1 2 3 4 8 12)
 if(NOT STREAMCENTERPLUS_CUDA_ARCHITECTURE_THREADS IN_LIST
        _streamcenterplus_cuda_architecture_thread_choices)
   message(FATAL_ERROR
-    "STREAMCENTERPLUS_CUDA_ARCHITECTURE_THREADS must be one of 0, 1, 2, 4, 8, or 12; got "
+    "STREAMCENTERPLUS_CUDA_ARCHITECTURE_THREADS must be one of 0, 1, 2, 3, 4, 8, or 12; got "
     "'${STREAMCENTERPLUS_CUDA_ARCHITECTURE_THREADS}'.")
 endif()
 unset(_streamcenterplus_cuda_architecture_thread_choices)
@@ -155,6 +155,31 @@ endif()
 set(STREAMCENTERPLUS_CUDA_AVAILABLE "${STREAMCENTERPLUS_CUDA_AVAILABLE}"
     CACHE INTERNAL "Whether the unified solver library has a usable CUDA backend" FORCE)
 
+function(_streamcenterplus_set_target_cuda_capability target capability)
+  if(NOT capability MATCHES "^[01]$")
+    message(FATAL_ERROR
+      "_streamcenterplus_set_target_cuda_capability received invalid capability "
+      "'${capability}' for target '${target}'.")
+  endif()
+
+  get_property(_streamcenterplus_capability_is_set
+    TARGET "${target}" PROPERTY STREAMCENTERPLUS_CUDA_CAPABILITY SET)
+  if(_streamcenterplus_capability_is_set)
+    get_target_property(_streamcenterplus_existing_capability
+      "${target}" STREAMCENTERPLUS_CUDA_CAPABILITY)
+    if(NOT "${_streamcenterplus_existing_capability}" STREQUAL "${capability}")
+      message(FATAL_ERROR
+        "CUDA capability '${capability}' for target '${target}' conflicts with its "
+        "existing SolverSDK CUDA capability '${_streamcenterplus_existing_capability}'.")
+    endif()
+  endif()
+
+  set_property(TARGET "${target}" PROPERTY
+    STREAMCENTERPLUS_CUDA_CAPABILITY "${capability}")
+  set_property(TARGET "${target}" PROPERTY
+    INTERFACE_STREAMCENTERPLUS_CUDA_CAPABILITY "${capability}")
+endfunction()
+
 function(_streamcenterplus_resolve_cuda_parallelism
     output_architecture_threads
     output_split_compile_threads
@@ -180,11 +205,11 @@ function(_streamcenterplus_resolve_cuda_parallelism
     set(ARG_SPLIT_COMPILE_THREADS_CAP "2")
   endif()
 
-  set(_streamcenterplus_architecture_cap_choices 1 2 4 8 12)
+  set(_streamcenterplus_architecture_cap_choices 1 2 3 4 8 12)
   if(NOT ARG_ARCHITECTURE_THREADS_CAP IN_LIST
          _streamcenterplus_architecture_cap_choices)
     message(FATAL_ERROR
-      "ARCHITECTURE_THREADS_CAP must be one of 1, 2, 4, 8, or 12; got "
+      "ARCHITECTURE_THREADS_CAP must be one of 1, 2, 3, 4, 8, or 12; got "
       "'${ARG_ARCHITECTURE_THREADS_CAP}'.")
   endif()
   set(_streamcenterplus_split_compile_cap_choices 1 2 4 8)
@@ -386,6 +411,31 @@ function(streamcenterplus_add_optional_cuda target)
       "streamcenterplus_add_optional_cuda cannot use SEPARABLE and "
       "NO_SEPARABLE together.")
   endif()
+  foreach(_streamcenterplus_cuda_section IN ITEMS SOURCES LIBRARIES)
+    set(_streamcenterplus_cuda_section_values
+      "${ARG_${_streamcenterplus_cuda_section}}")
+    foreach(_streamcenterplus_cuda_section_value IN LISTS
+        _streamcenterplus_cuda_section_values)
+      # The helper's grammar reserves all-uppercase bare identifiers for its
+      # controls.  A normal source has a path or extension, and a normal
+      # library is a target, path, flag, or namespaced imported target.  This
+      # catches a misspelled control after a multi-value section even in
+      # CpuOnly mode, where sources and libraries are intentionally not used.
+      if(_streamcenterplus_cuda_section_value MATCHES "^[A-Z][A-Z0-9_]*$")
+        if((_streamcenterplus_cuda_section STREQUAL "SOURCES" AND
+            EXISTS "${_streamcenterplus_cuda_section_value}") OR
+           (_streamcenterplus_cuda_section STREQUAL "LIBRARIES" AND
+            TARGET "${_streamcenterplus_cuda_section_value}"))
+          continue()
+        endif()
+        message(FATAL_ERROR
+          "streamcenterplus_add_optional_cuda received an unrecognized CUDA "
+          "control keyword in ${_streamcenterplus_cuda_section}: "
+          "${_streamcenterplus_cuda_section_value}. Control keywords must "
+          "appear before SOURCES and LIBRARIES.")
+      endif()
+    endforeach()
+  endforeach()
 
   # Preserve the published SolverSDK contract: CUDA targets use whole-program
   # device compilation unless a target explicitly opts into relocatable device
@@ -415,6 +465,7 @@ function(streamcenterplus_add_optional_cuda target)
     ${_streamcenterplus_parallel_cap_arguments})
 
   if(STREAMCENTERPLUS_CUDA_AVAILABLE)
+    _streamcenterplus_set_target_cuda_capability("${target}" 1)
     target_sources("${target}" PRIVATE ${ARG_SOURCES})
     if(ARG_LIBRARIES)
       target_link_libraries("${target}" PUBLIC ${ARG_LIBRARIES})
@@ -433,6 +484,7 @@ function(streamcenterplus_add_optional_cuda target)
       "${target}: CUDA 13.2 backend enabled (${CMAKE_CUDA_COMPILER}); "
       "fat binary=${STREAMCENTERPLUS_CUDA_ARCHITECTURES}.")
   else()
+    _streamcenterplus_set_target_cuda_capability("${target}" 0)
     target_compile_definitions("${target}" PUBLIC STREAMCENTERPLUS_HAS_CUDA=0)
     message(STATUS "${target}: explicit CpuOnly build; CUDA sources are excluded.")
   endif()

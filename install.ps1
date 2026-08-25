@@ -7,8 +7,9 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $repoRoot = $PSScriptRoot
-$architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
-$platformTag = "windows-$architecture"
+# The Visual Studio invocation below always targets x64.  Keep the release
+# directory label tied to that target ABI rather than to the host architecture.
+$platformTag = "windows-x64"
 $BuildDir = Join-Path (Join-Path $repoRoot ".build") $platformTag
 $InstallDir = Join-Path (Join-Path $repoRoot "release") $platformTag
 

@@ -1,9 +1,11 @@
+cmake_minimum_required(VERSION 3.24)
+
 foreach(_required IN ITEMS
     SCP_SOLVER_SDK_SOURCE_DIR
     FIXTURE_SOURCE_DIR
     FIXTURE_BINARY_DIR
     TEST_GENERATOR
-    TEST_FAILURE_MODE)
+    TEST_MODE)
   if(NOT DEFINED "${_required}" OR "${${_required}}" STREQUAL "")
     message(FATAL_ERROR "${_required} is required.")
   endif()
@@ -17,7 +19,7 @@ set(_configure_command
   -G "${TEST_GENERATOR}"
   "-DCMAKE_TRY_COMPILE_CONFIGURATION=Release"
   "-DSCP_SOLVER_SDK_SOURCE_DIR=${SCP_SOLVER_SDK_SOURCE_DIR}"
-  "-DTEST_FAILURE_MODE=${TEST_FAILURE_MODE}"
+  "-DTEST_MODE=${TEST_MODE}"
 )
 if(DEFINED TEST_GENERATOR_PLATFORM AND NOT TEST_GENERATOR_PLATFORM STREQUAL "")
   list(APPEND _configure_command -A "${TEST_GENERATOR_PLATFORM}")
@@ -32,32 +34,22 @@ execute_process(
   OUTPUT_VARIABLE _stdout
   ERROR_VARIABLE _stderr
 )
-if(TEST_FAILURE_MODE STREQUAL "none")
+if(TEST_MODE STREQUAL "default")
   if(NOT _result EQUAL 0)
-    message(FATAL_ERROR "Valid solver info fixture failed:\n${_stdout}\n${_stderr}")
-  endif()
-  execute_process(
-    COMMAND "${CMAKE_COMMAND}" --build "${FIXTURE_BINARY_DIR}" --config Release --parallel
-    RESULT_VARIABLE _build_result
-    OUTPUT_VARIABLE _build_stdout
-    ERROR_VARIABLE _build_stderr
-  )
-  if(NOT _build_result EQUAL 0)
     message(FATAL_ERROR
-      "Valid solver info fixture configured but did not compile:\n"
-      "${_build_stdout}\n${_build_stderr}")
+      "Default solver bundle destination fixture failed:\n${_stdout}\n${_stderr}")
   endif()
 elseif(_result EQUAL 0)
   message(FATAL_ERROR
-    "Invalid solver info mode '${TEST_FAILURE_MODE}' unexpectedly configured successfully.")
+    "Bare solver bundle DESTINATION unexpectedly configured successfully.")
 elseif(NOT DEFINED EXPECTED_ERROR_PATTERN OR EXPECTED_ERROR_PATTERN STREQUAL "")
-  message(FATAL_ERROR "EXPECTED_ERROR_PATTERN is required for invalid solver info modes.")
+  message(FATAL_ERROR "EXPECTED_ERROR_PATTERN is required for invalid bundle modes.")
 else()
   set(_diagnostic "${_stdout}\n${_stderr}")
   string(REGEX REPLACE "[ \t\r\n]+" " " _normalized_diagnostic "${_diagnostic}")
   if(NOT _normalized_diagnostic MATCHES "${EXPECTED_ERROR_PATTERN}")
     message(FATAL_ERROR
-      "Invalid solver info mode '${TEST_FAILURE_MODE}' failed with an unexpected diagnostic.\n"
+      "Bare solver bundle DESTINATION failed with an unexpected diagnostic.\n"
       "Expected pattern: ${EXPECTED_ERROR_PATTERN}\n"
       "Actual output:\n${_diagnostic}")
   endif()

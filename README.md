@@ -77,7 +77,13 @@ Linux:
 bash ./install.sh
 ```
 
-The installation is fixed inside this repository at `release/<platform>-<architecture>`. Build trees are fixed under `.build/`; both directories are ignored by Git. Installers expose no path parameters or environment-variable overrides. Use `-Clean` on Windows or `--clean` on Linux to remove only the SDK build tree before rebuilding; this cleanup does not remove the existing release directory.
+The installation is fixed inside this repository at `release/windows-x64` on
+Windows (the Windows scripts deliberately build the x64 target) and at
+`release/<platform>-<architecture>` on Linux. Build trees are fixed under
+`.build/`; both directories are ignored by Git. Installers expose no path
+parameters or environment-variable overrides. Use `-Clean` on Windows or
+`--clean` on Linux to remove only the SDK build tree before rebuilding; this
+cleanup does not remove the existing release directory.
 
 ## Use from the Streamcenter+ superproject
 
@@ -120,6 +126,15 @@ Pass the SDK installation prefix through CMake's `CMAKE_PREFIX_PATH` or `<Packag
 
 Including `StreamcenterPlusOptionalCuda.cmake` defines the cache setting `STREAMCENTERPLUS_BUILD_MODE`, whose supported values are `CpuOnly` (the default) and `CpuCuda`. `CpuOnly` never probes or enables the CUDA language. `CpuCuda` fails configuration unless both nvcc and CUDAToolkit are CUDA 13.2.x, then compiles a single hybrid solver target for every base compute capability reported by that toolchain: `sm_75`, `sm_80`, `sm_86`, `sm_87`, `sm_88`, `sm_89`, `sm_90`, `sm_100`, `sm_103`, `sm_110`, `sm_120`, and `sm_121`, plus a `compute_120` PTX fallback. The fully optimized compute-120 device IR feeds both native sm-120 and sm-121 assembly, and the retained PTX remains forward-compatible with newer devices. Runtime selection remains the solver configuration's `compute_backend=cpu|cuda` setting.
 
+`streamcenterplus_add_optional_cuda` publishes
+`STREAMCENTERPLUS_HAS_CUDA` as the compile-time capability of the target it
+configures. `streamcenterplus_configure_solver_info` independently defines
+`STREAMCENTERPLUS_SOLVER_HAS_CUDA` for `--solver-info` metadata. SolverSDK
+rejects mismatches between the declared solver capability and an OptionalCuda
+target linked to it in the same CMake directory, including links added after
+the solver-info call. This keeps metadata and code-generation capability
+consistent without redefining a public compile macro on the executable.
+
 The global requests default to 12 architecture workers and two split-compile optimizer threads. Every CUDA target then applies a finite local safety cap: both caps default to 2 unless the module explicitly opts into a measured higher value. The effective value is the lesser of the request and cap; request value `0` means “use this target's cap”, not unbounded host concurrency. `streamcenterplus_add_optional_cuda` and `streamcenterplus_apply_cuda_release_codegen` accept the named one-value arguments `ARCHITECTURE_THREADS_CAP` and `SPLIT_COMPILE_THREADS_CAP`. Configuration reports the requested, capped, and effective values separately so a packaging log is auditable.
 
 The supported split-compile benchmark sweep is selected explicitly at configure time with `-DSTREAMCENTERPLUS_CUDA_SPLIT_COMPILE_THREADS=2`, `=4`, or `=8`, but a target can use a candidate only when its local cap permits it. These entries are benchmark candidates, not a claim that a higher value is universally faster; the production request remains 2 until representative full-fat timing, peak-memory, generated-code, numerical-result, and runtime-performance measurements justify a change. None of these concurrency settings changes the published architecture matrix.
@@ -150,8 +165,10 @@ remains 2/2 unless a module opts into measured higher values.
 
 CUDA helper control keywords (`SEPARABLE`, `NO_SEPARABLE`,
 `ARCHITECTURE_THREADS_CAP`, and `SPLIT_COMPILE_THREADS_CAP`) must appear before
-the multi-value `SOURCES` and `LIBRARIES` sections. This keeps unknown or
-misspelled policy keywords fail-closed during `CpuOnly` configuration. The
+the multi-value `SOURCES` and `LIBRARIES` sections. Bare all-uppercase
+identifiers in either section are rejected as likely misplaced or misspelled
+control keywords, keeping those errors fail-closed during `CpuOnly`
+configuration. The
 formal release gate additionally parses all 11 packaged CUDA call sites and
 requires this ordering, one CUDA translation unit, explicit `NO_SEPARABLE`, and
 the approved target-cap mapping.
@@ -181,7 +198,7 @@ runtime execution path. The patched cache-miss path invokes CUDA 13.2 with the
 same ordered child `argv[]` elements supplied by MSBuild after removing only
 ccache control arguments; it does not reconstruct or reorder the NVCC command.
 A hit reuses an object previously produced for the same exact arguments,
-verified source closure, toolchain and policy.
+preprocessed translation unit, explicit generated inputs, toolchain and policy.
 
 The repository policy is intentionally conservative:
 
@@ -193,19 +210,21 @@ The repository policy is intentionally conservative:
 - The repository-local cache is limited to 64 GB and stored without compression
   to favor lookup speed on the build machine.
 
-In addition to ccache's normal preprocessed-input checks, Streamcenter+ assigns
-each build a content-derived namespace. Its v4 toolchain fingerprint covers the
+In addition to ccache's normal exact-command and preprocessed-input checks,
+Streamcenter+ assigns each build a content-derived namespace. Its v4 toolchain fingerprint covers the
 verified patched ccache executable and tracked policy, CUDA compiler/headers,
 the complete `nvvm` tree (including `libdevice.10.bc`), CUDA MSBuild
 integration files, Visual Studio 2022 CUDA build customizations, the selected
 x64 MSVC and Windows SDK toolchain, and hidden compiler inputs
 `NVCC_PREPEND_FLAGS`, `NVCC_APPEND_FLAGS`, `CUDAFE_FLAGS`, `PTXAS_OPTIONS`,
-`CL`, and `_CL_`. Each CUDA component also receives a deterministic source
-closure manifest through `CCACHE_EXTRAFILES`; this covers project and generated
-sources, SolverSDK, and installed dependency include roots that a single outer
-NVCC preprocessing pass may not expose. A source, toolchain or policy change
-therefore moves work into a different namespace instead of silently reusing an
-older object.
+`CL`, and `_CL_`. Each CUDA component also receives a deterministic minimal
+cache-input manifest through `CCACHE_EXTRAFILES`; it covers explicitly declared
+generated inputs that may be opaque to preprocessing. Ordinary project,
+SolverSDK, and installed dependency headers are already represented when they
+affect ccache's preprocessed translation unit, so unrelated edits no longer
+force false cache misses. A separate complete source/dependency closure is
+still compared before and after the build and rejects any mid-build mutation
+fail-closed.
 
 For formal release children, the parent supplies both the v4
 content-addressed toolchain manifest and its expected SHA-256. The child hashes
@@ -213,7 +232,7 @@ that manifest plus the current `nvcc`, `cl`, patched ccache, policy, and every
 recorded compiler-affecting environment value instead of repeatedly hashing the
 complete CUDA/MSVC/SDK header inventory. Manifest-without-hash is rejected;
 standalone and legacy hash-only calls retain a full pre/post inventory. Each
-actual CUDA component also receives its own closure-derived namespace and
+actual CUDA component also receives its own cache-input-derived namespace and
 `CCACHE_EXTRAFILES`; CPU-only components do not.
 
 `StreamcenterPlusOptionalCuda.cmake` activates this path only when the component

@@ -230,6 +230,81 @@ if(SCP_SOLVER_SDK_BUILD_TESTING AND BUILD_TESTING)
     )
   endforeach()
 
+  set(_scp_solver_sdk_solver_info_cuda_fixture
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/SolverInfoCudaFixture")
+  set(_scp_solver_sdk_solver_info_cuda_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/ValidateSolverInfoCuda.cmake")
+  function(_scp_solver_sdk_add_solver_info_cuda_test
+      test_name test_mode expected_error_pattern)
+    string(MD5 _scp_solver_sdk_fixture_hash "${test_name}")
+    string(SUBSTRING "${_scp_solver_sdk_fixture_hash}" 0 8
+      _scp_solver_sdk_fixture_hash)
+    add_test(
+      NAME "${test_name}"
+      COMMAND "${CMAKE_COMMAND}"
+        "-DSCP_SOLVER_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DFIXTURE_SOURCE_DIR=${_scp_solver_sdk_solver_info_cuda_fixture}"
+        "-DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests/solver-info-cuda-${_scp_solver_sdk_fixture_hash}"
+        "-DTEST_GENERATOR=${CMAKE_GENERATOR}"
+        "-DTEST_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+        "-DTEST_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
+        "-DTEST_MODE=${test_mode}"
+        "-DEXPECTED_ERROR_PATTERN=${expected_error_pattern}"
+        -P "${_scp_solver_sdk_solver_info_cuda_test}"
+    )
+  endfunction()
+  _scp_solver_sdk_add_solver_info_cuda_test(
+    scp_solver_sdk_solver_info_cuda_capability_match
+    matching
+    "")
+  _scp_solver_sdk_add_solver_info_cuda_test(
+    scp_solver_sdk_solver_info_cuda_capability_cpu_match
+    matching-cpu
+    "")
+  _scp_solver_sdk_add_solver_info_cuda_test(
+    scp_solver_sdk_solver_info_cuda_capability_direct_mismatch
+    direct-mismatch
+    "conflicts with its existing SolverSDK CUDA capability")
+  _scp_solver_sdk_add_solver_info_cuda_test(
+    scp_solver_sdk_solver_info_cuda_capability_direct_mismatch_reversed
+    direct-mismatch-reversed
+    "CUDA capability '1' for target 'info_fixture' conflicts with its existing SolverSDK CUDA capability '0'")
+  _scp_solver_sdk_add_solver_info_cuda_test(
+    scp_solver_sdk_solver_info_cuda_capability_transitive_mismatch
+    transitive-mismatch
+    "conflicts with the OptionalCuda capability '1' published by linked target 'cuda_core'")
+
+  set(_scp_solver_sdk_solver_bundle_fixture
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/SolverBundleFixture")
+  set(_scp_solver_sdk_solver_bundle_test
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/ValidateSolverBundle.cmake")
+  function(_scp_solver_sdk_add_solver_bundle_test test_name test_mode expected_error_pattern)
+    string(MD5 _scp_solver_sdk_fixture_hash "${test_name}")
+    string(SUBSTRING "${_scp_solver_sdk_fixture_hash}" 0 8
+      _scp_solver_sdk_fixture_hash)
+    add_test(
+      NAME "${test_name}"
+      COMMAND "${CMAKE_COMMAND}"
+        "-DSCP_SOLVER_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DFIXTURE_SOURCE_DIR=${_scp_solver_sdk_solver_bundle_fixture}"
+        "-DFIXTURE_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/tests/solver-bundle-${_scp_solver_sdk_fixture_hash}"
+        "-DTEST_GENERATOR=${CMAKE_GENERATOR}"
+        "-DTEST_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+        "-DTEST_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
+        "-DTEST_MODE=${test_mode}"
+        "-DEXPECTED_ERROR_PATTERN=${expected_error_pattern}"
+        -P "${_scp_solver_sdk_solver_bundle_test}"
+    )
+  endfunction()
+  _scp_solver_sdk_add_solver_bundle_test(
+    scp_solver_sdk_solver_bundle_default_destination
+    default
+    "")
+  _scp_solver_sdk_add_solver_bundle_test(
+    scp_solver_sdk_solver_bundle_reject_missing_destination
+    bare-destination
+    "missing values for: DESTINATION")
+
   set(_scp_solver_sdk_cuda_policy_test
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/ValidateOptionalCudaPolicy.cmake")
 
@@ -330,14 +405,25 @@ if(SCP_SOLVER_SDK_BUILD_TESTING AND BUILD_TESTING)
     "-DEXPECTED_SPLIT_COMPILE_THREADS_CAP=2"
   )
   _scp_solver_sdk_add_cuda_cap_test(
+    scp_solver_sdk_cuda_cap_ftle_profile
+    "-DSTREAMCENTERPLUS_CUDA_ARCHITECTURE_THREADS=12"
+    "-DSTREAMCENTERPLUS_CUDA_SPLIT_COMPILE_THREADS=8"
+    "-DCAP_ARCHITECTURE_THREADS=8"
+    "-DCAP_SPLIT_COMPILE_THREADS=2"
+    "-DEXPECTED_EFFECTIVE_ARCHITECTURE_THREADS=8"
+    "-DEXPECTED_EFFECTIVE_SPLIT_COMPILE_THREADS=2"
+    "-DEXPECTED_ARCHITECTURE_THREADS_CAP=8"
+    "-DEXPECTED_SPLIT_COMPILE_THREADS_CAP=2"
+  )
+  _scp_solver_sdk_add_cuda_cap_test(
     scp_solver_sdk_cuda_cap_fsle_profile
     "-DSTREAMCENTERPLUS_CUDA_ARCHITECTURE_THREADS=12"
     "-DSTREAMCENTERPLUS_CUDA_SPLIT_COMPILE_THREADS=8"
-    "-DCAP_ARCHITECTURE_THREADS=12"
+    "-DCAP_ARCHITECTURE_THREADS=8"
     "-DCAP_SPLIT_COMPILE_THREADS=8"
-    "-DEXPECTED_EFFECTIVE_ARCHITECTURE_THREADS=12"
+    "-DEXPECTED_EFFECTIVE_ARCHITECTURE_THREADS=8"
     "-DEXPECTED_EFFECTIVE_SPLIT_COMPILE_THREADS=8"
-    "-DEXPECTED_ARCHITECTURE_THREADS_CAP=12"
+    "-DEXPECTED_ARCHITECTURE_THREADS_CAP=8"
     "-DEXPECTED_SPLIT_COMPILE_THREADS_CAP=8"
   )
   _scp_solver_sdk_add_cuda_cap_test(
@@ -358,7 +444,7 @@ if(SCP_SOLVER_SDK_BUILD_TESTING AND BUILD_TESTING)
     COMMAND "${CMAKE_COMMAND}"
       "-DSCP_SOLVER_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
       "-DINVALID_CAP_ARGUMENT=CAP_ARCHITECTURE_THREADS"
-      "-DINVALID_CAP_VALUE=3"
+      "-DINVALID_CAP_VALUE=6"
       "-DEXPECTED_ERROR_PATTERN=ARCHITECTURE_THREADS_CAP must be one of"
       -P "${_scp_solver_sdk_cuda_cap_failure_test}"
   )
@@ -430,6 +516,18 @@ if(SCP_SOLVER_SDK_BUILD_TESTING AND BUILD_TESTING)
     "-DEXPECTED_EFFECTIVE_ARCHITECTURE_THREADS=2"
     "-DEXPECTED_EFFECTIVE_SPLIT_COMPILE_THREADS=2"
     "-DEXPECTED_ARCHITECTURE_THREADS_CAP=2"
+    "-DEXPECTED_SPLIT_COMPILE_THREADS_CAP=2"
+  )
+  _scp_solver_sdk_add_cuda_cap_target_test(
+    scp_solver_sdk_cuda_cap_target_add_ftle
+    "-DTEST_HELPER=add"
+    "-DSTREAMCENTERPLUS_CUDA_ARCHITECTURE_THREADS=12"
+    "-DSTREAMCENTERPLUS_CUDA_SPLIT_COMPILE_THREADS=8"
+    "-DCAP_ARCHITECTURE_THREADS=12"
+    "-DCAP_SPLIT_COMPILE_THREADS=2"
+    "-DEXPECTED_EFFECTIVE_ARCHITECTURE_THREADS=12"
+    "-DEXPECTED_EFFECTIVE_SPLIT_COMPILE_THREADS=2"
+    "-DEXPECTED_ARCHITECTURE_THREADS_CAP=12"
     "-DEXPECTED_SPLIT_COMPILE_THREADS_CAP=2"
   )
   _scp_solver_sdk_add_cuda_cap_target_test(
@@ -516,6 +614,18 @@ if(SCP_SOLVER_SDK_BUILD_TESTING AND BUILD_TESTING)
     scp_solver_sdk_cuda_reject_unknown_argument
     unknown-before-sources
     "received unknown arguments: UNKNOWN_CUDA_POLICY")
+  _scp_solver_sdk_add_cuda_argument_failure_test(
+    scp_solver_sdk_cuda_reject_unknown_argument_after_sources
+    unknown-after-sources
+    "unrecognized CUDA control keyword in SOURCES: UNKNOWN_CUDA_POLICY")
+  _scp_solver_sdk_add_cuda_argument_failure_test(
+    scp_solver_sdk_cuda_reject_misspelled_separable_after_sources
+    misspelled-separable-after-sources
+    "unrecognized CUDA control keyword in SOURCES: SEPERABLE")
+  _scp_solver_sdk_add_cuda_argument_failure_test(
+    scp_solver_sdk_cuda_reject_unknown_argument_after_libraries
+    unknown-after-libraries
+    "unrecognized CUDA control keyword in LIBRARIES: UNKNOWN_CUDA_POLICY")
   _scp_solver_sdk_add_cuda_argument_failure_test(
     scp_solver_sdk_cuda_reject_missing_cap_value
     missing-cap-value

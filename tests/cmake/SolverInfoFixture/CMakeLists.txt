@@ -7,6 +7,8 @@ else()
 endif()
 
 add_library(SCP_SolverSDK INTERFACE)
+target_include_directories(SCP_SolverSDK INTERFACE
+  "${SCP_SOLVER_SDK_SOURCE_DIR}/include")
 add_library(SCP::SolverSDK ALIAS SCP_SolverSDK)
 add_executable(info_fixture dummy.cpp)
 include("${SCP_SOLVER_SDK_SOURCE_DIR}/cmake/modules/StreamcenterPlusSolverInfo.cmake")

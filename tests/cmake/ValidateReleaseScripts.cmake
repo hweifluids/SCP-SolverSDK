@@ -4,6 +4,7 @@ endif()
 
 file(READ "${SCP_SOLVER_SDK_SOURCE_DIR}/install.ps1" _install_ps1)
 file(READ "${SCP_SOLVER_SDK_SOURCE_DIR}/install.sh" _install_sh)
+file(READ "${SCP_SOLVER_SDK_SOURCE_DIR}/examples/smoke/run.ps1" _smoke_ps1)
 file(READ "${SCP_SOLVER_SDK_SOURCE_DIR}/examples/smoke/run.sh" _smoke_sh)
 
 string(FIND "${_install_ps1}" [=[Remove-Item -LiteralPath $buildRoot]=] _ps_build_clean)
@@ -14,6 +15,19 @@ string(FIND "${_install_ps1}" [=[Remove-Item -LiteralPath $installRoot]=] _ps_re
 if(NOT _ps_release_clean EQUAL -1)
   message(FATAL_ERROR "install.ps1 -Clean must not delete the existing release directory.")
 endif()
+
+foreach(_windows_release_script IN ITEMS _install_ps1 _smoke_ps1)
+  string(FIND "${${_windows_release_script}}" [=[windows-x64]=] _windows_x64_tag)
+  if(_windows_x64_tag EQUAL -1)
+    message(FATAL_ERROR
+      "${_windows_release_script} must use the fixed windows-x64 release tag.")
+  endif()
+  string(FIND "${${_windows_release_script}}" [=[OSArchitecture]=] _host_architecture_tag)
+  if(NOT _host_architecture_tag EQUAL -1)
+    message(FATAL_ERROR
+      "${_windows_release_script} must not label the fixed x64 build with the host architecture.")
+  endif()
+endforeach()
 
 string(FIND "${_install_sh}" [=[rm -rf -- "${build_root}"]=] _sh_build_clean)
 if(_sh_build_clean EQUAL -1)

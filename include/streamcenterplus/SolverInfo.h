@@ -23,8 +23,16 @@
 #error "STREAMCENTERPLUS_HAS_CPU must be configured for every solver executable."
 #endif
 
-#ifndef STREAMCENTERPLUS_HAS_CUDA
-#error "STREAMCENTERPLUS_HAS_CUDA must be configured for every solver executable."
+#ifndef STREAMCENTERPLUS_SOLVER_HAS_CUDA
+// SolverSDK 0.2.0 originally used the target-codegen macro for identity
+// metadata as well.  Keep headers built with that older setup source-compatible,
+// but new CMake helpers configure a distinct metadata macro so a linked CUDA
+// target cannot redefine it.
+#ifdef STREAMCENTERPLUS_HAS_CUDA
+#define STREAMCENTERPLUS_SOLVER_HAS_CUDA STREAMCENTERPLUS_HAS_CUDA
+#else
+#error "STREAMCENTERPLUS_SOLVER_HAS_CUDA must be configured for every solver executable."
+#endif
 #endif
 
 #ifndef STREAMCENTERPLUS_MESH_FEATURES
@@ -48,7 +56,7 @@ inline bool HandleSolverInfoRequest(int argc, char* const* argv) {
               << "organization=The University of Manchester\n"
               << "date=" STREAMCENTERPLUS_BUILD_DATE "\n"
               << "cpu=" << (STREAMCENTERPLUS_HAS_CPU ? 1 : 0) << "\n"
-              << "cuda=" << (STREAMCENTERPLUS_HAS_CUDA ? 1 : 0) << "\n"
+              << "cuda=" << (STREAMCENTERPLUS_SOLVER_HAS_CUDA ? 1 : 0) << "\n"
               // A comma-separated, additive capability list.  Consumers that
               // predate this field continue to treat an absent value as
               // single_static.

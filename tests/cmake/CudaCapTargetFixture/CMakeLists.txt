@@ -35,10 +35,11 @@ if(NOT DEFINED TEST_ARGUMENT_FAILURE_MODE OR
   set(TEST_ARGUMENT_FAILURE_MODE "none")
 endif()
 if(NOT TEST_ARGUMENT_FAILURE_MODE MATCHES
-   "^(none|unknown-before-sources|missing-cap-value|conflicting-separable)$")
+   "^(none|unknown-before-sources|unknown-after-sources|misspelled-separable-after-sources|unknown-after-libraries|missing-cap-value|conflicting-separable)$")
   message(FATAL_ERROR
     "TEST_ARGUMENT_FAILURE_MODE must be none, unknown-before-sources, "
-    "missing-cap-value, or conflicting-separable.")
+    "unknown-after-sources, misspelled-separable-after-sources, "
+    "unknown-after-libraries, missing-cap-value, or conflicting-separable.")
 endif()
 
 set(STREAMCENTERPLUS_BUILD_MODE "CpuOnly" CACHE STRING "" FORCE)
@@ -107,6 +108,22 @@ else()
       cuda_cap_fixture
       UNKNOWN_CUDA_POLICY
       SOURCES dummy.cpp
+    )
+  elseif(TEST_ARGUMENT_FAILURE_MODE STREQUAL "unknown-after-sources")
+    streamcenterplus_add_optional_cuda(
+      cuda_cap_fixture
+      SOURCES dummy.cpp UNKNOWN_CUDA_POLICY
+    )
+  elseif(TEST_ARGUMENT_FAILURE_MODE STREQUAL "misspelled-separable-after-sources")
+    streamcenterplus_add_optional_cuda(
+      cuda_cap_fixture
+      SOURCES dummy.cpp SEPERABLE
+    )
+  elseif(TEST_ARGUMENT_FAILURE_MODE STREQUAL "unknown-after-libraries")
+    streamcenterplus_add_optional_cuda(
+      cuda_cap_fixture
+      SOURCES dummy.cpp
+      LIBRARIES fixture_dependency UNKNOWN_CUDA_POLICY
     )
   elseif(TEST_ARGUMENT_FAILURE_MODE STREQUAL "missing-cap-value")
     streamcenterplus_add_optional_cuda(
