@@ -93,9 +93,7 @@ inline std::vector<std::filesystem::path> ExpandTimeSteps(const std::filesystem:
     auto reader = vtkSmartPointer<vtkHDFReader>::New();
     reader->SetFileName(realPath.string().c_str());
     reader->UpdateInformation();
-    const vtkIdType numberOfSteps = reader->GetHasTransientData()
-        ? std::max<vtkIdType>(reader->GetNumberOfSteps(), 1)
-        : 1;
+    const vtkIdType numberOfSteps = std::max<vtkIdType>(reader->GetNumberOfSteps(), 1);
     if (numberOfSteps <= 1) {
         return {realPath};
     }
@@ -148,9 +146,7 @@ inline std::vector<double> TimeValues(const std::filesystem::path& filePath) {
     auto reader = vtkSmartPointer<vtkHDFReader>::New();
     reader->SetFileName(realPath.string().c_str());
     reader->UpdateInformation();
-    const vtkIdType numberOfSteps = reader->GetHasTransientData()
-        ? std::max<vtkIdType>(reader->GetNumberOfSteps(), 1)
-        : 1;
+    const vtkIdType numberOfSteps = std::max<vtkIdType>(reader->GetNumberOfSteps(), 1);
     if (vtkInformation* info = reader->GetOutputInformation(0)) {
         vtkInformationDoubleVectorKey* timeStepsKey = vtkStreamingDemandDrivenPipeline::TIME_STEPS();
         if (info->Has(timeStepsKey)) {

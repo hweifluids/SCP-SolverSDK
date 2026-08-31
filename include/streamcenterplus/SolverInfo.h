@@ -31,6 +31,18 @@
 #define STREAMCENTERPLUS_MESH_FEATURES "single_static"
 #endif
 
+#ifndef STREAMCENTERPLUS_CLUSTER_PACKAGE_FORMATS
+#define STREAMCENTERPLUS_CLUSTER_PACKAGE_FORMATS "scpjob.tar"
+#endif
+
+#ifndef STREAMCENTERPLUS_CLUSTER_CONTROL_FORMAT
+#define STREAMCENTERPLUS_CLUSTER_CONTROL_FORMAT "streamcenterplus_deck_key_value"
+#endif
+
+#ifndef STREAMCENTERPLUS_CLUSTER_PARTITION_MODES
+#define STREAMCENTERPLUS_CLUSTER_PARTITION_MODES "cluster_preflight,precomputed"
+#endif
+
 namespace streamcenterplus {
 
 inline bool HandleSolverInfoRequest(int argc, char* const* argv) {
@@ -52,7 +64,10 @@ inline bool HandleSolverInfoRequest(int argc, char* const* argv) {
               // A comma-separated, additive capability list.  Consumers that
               // predate this field continue to treat an absent value as
               // single_static.
-              << "mesh_features=" STREAMCENTERPLUS_MESH_FEATURES "\n";
+              << "mesh_features=" STREAMCENTERPLUS_MESH_FEATURES "\n"
+              << "cluster_package_formats=" STREAMCENTERPLUS_CLUSTER_PACKAGE_FORMATS "\n"
+              << "cluster_control_format=" STREAMCENTERPLUS_CLUSTER_CONTROL_FORMAT "\n"
+              << "cluster_partition_modes=" STREAMCENTERPLUS_CLUSTER_PARTITION_MODES "\n";
     return true;
 }
 

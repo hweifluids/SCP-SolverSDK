@@ -51,6 +51,15 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
       "Solver mesh features for target '${target}' must be a comma-separated identifier list; received '${_streamcenterplus_mesh_features}'.")
   endif()
 
+  set(_streamcenterplus_cluster_partition_modes "cluster_preflight,precomputed")
+  if(ARGC GREATER 6)
+    set(_streamcenterplus_cluster_partition_modes "${ARGV6}")
+  endif()
+  if(NOT _streamcenterplus_cluster_partition_modes MATCHES "^[A-Za-z0-9_,-]+$")
+    message(FATAL_ERROR
+      "Cluster partition modes for target '${target}' must be a comma-separated identifier list; received '${_streamcenterplus_cluster_partition_modes}'.")
+  endif()
+
   target_link_libraries("${target}" PRIVATE SCP::SolverSDK)
   target_compile_definitions("${target}" PRIVATE
     STREAMCENTERPLUS_SOLVER_NAME="${solver_name}"
@@ -60,11 +69,24 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
     STREAMCENTERPLUS_HAS_CPU=${_streamcenterplus_has_cpu}
     STREAMCENTERPLUS_HAS_CUDA=${_streamcenterplus_has_cuda}
     STREAMCENTERPLUS_MESH_FEATURES="${_streamcenterplus_mesh_features}"
+    STREAMCENTERPLUS_CLUSTER_PACKAGE_FORMATS="scpjob.tar"
+    STREAMCENTERPLUS_CLUSTER_CONTROL_FORMAT="streamcenterplus_deck_key_value"
+    STREAMCENTERPLUS_CLUSTER_PARTITION_MODES="${_streamcenterplus_cluster_partition_modes}"
   )
   set_target_properties("${target}" PROPERTIES
     OUTPUT_NAME "${solver_name}_solver_${_streamcenterplus_build_date}"
+    STREAMCENTERPLUS_SOLVER_NAME "${solver_name}"
+    STREAMCENTERPLUS_SOLVER_VERSION "${PROJECT_VERSION}"
+    STREAMCENTERPLUS_SOLVER_TYPE "${_streamcenterplus_solver_type}"
+    STREAMCENTERPLUS_SOLVER_BUILD_DATE "${_streamcenterplus_build_date}"
+    STREAMCENTERPLUS_SOLVER_HAS_CPU "${_streamcenterplus_has_cpu}"
+    STREAMCENTERPLUS_SOLVER_HAS_CUDA "${_streamcenterplus_has_cuda}"
+    STREAMCENTERPLUS_SOLVER_MESH_FEATURES "${_streamcenterplus_mesh_features}"
+    STREAMCENTERPLUS_CLUSTER_PACKAGE_FORMATS "scpjob.tar"
+    STREAMCENTERPLUS_CLUSTER_CONTROL_FORMAT "streamcenterplus_deck_key_value"
+    STREAMCENTERPLUS_CLUSTER_PARTITION_MODES "${_streamcenterplus_cluster_partition_modes}"
   )
 
   message(STATUS
-    "${target}: solver info type=${_streamcenterplus_solver_type}, mesh_features=${_streamcenterplus_mesh_features}, date=${_streamcenterplus_build_date}, cpu=${_streamcenterplus_has_cpu}, cuda=${_streamcenterplus_has_cuda}.")
+    "${target}: solver info type=${_streamcenterplus_solver_type}, mesh_features=${_streamcenterplus_mesh_features}, cluster_partition_modes=${_streamcenterplus_cluster_partition_modes}, date=${_streamcenterplus_build_date}, cpu=${_streamcenterplus_has_cpu}, cuda=${_streamcenterplus_has_cuda}.")
 endfunction()

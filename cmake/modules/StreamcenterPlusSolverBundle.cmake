@@ -55,6 +55,37 @@ function(streamcenterplus_install_solver_bundle target)
     set(bundle_library_destination "${ARG_DESTINATION}/${CMAKE_INSTALL_LIBDIR}")
   endif()
 
+  get_target_property(bundle_solver_name "${target}" STREAMCENTERPLUS_SOLVER_NAME)
+  get_target_property(bundle_solver_version "${target}" STREAMCENTERPLUS_SOLVER_VERSION)
+  get_target_property(bundle_solver_type "${target}" STREAMCENTERPLUS_SOLVER_TYPE)
+  get_target_property(bundle_solver_build_date "${target}" STREAMCENTERPLUS_SOLVER_BUILD_DATE)
+  get_target_property(bundle_solver_has_cpu "${target}" STREAMCENTERPLUS_SOLVER_HAS_CPU)
+  get_target_property(bundle_solver_has_cuda "${target}" STREAMCENTERPLUS_SOLVER_HAS_CUDA)
+  get_target_property(bundle_solver_mesh_features "${target}" STREAMCENTERPLUS_SOLVER_MESH_FEATURES)
+  get_target_property(bundle_cluster_formats "${target}" STREAMCENTERPLUS_CLUSTER_PACKAGE_FORMATS)
+  get_target_property(bundle_cluster_control_format "${target}" STREAMCENTERPLUS_CLUSTER_CONTROL_FORMAT)
+  get_target_property(bundle_cluster_partition_modes "${target}" STREAMCENTERPLUS_CLUSTER_PARTITION_MODES)
+  get_target_property(bundle_output_name "${target}" OUTPUT_NAME)
+  foreach(bundle_value IN ITEMS
+      bundle_solver_name
+      bundle_solver_version
+      bundle_solver_type
+      bundle_solver_build_date
+      bundle_solver_has_cpu
+      bundle_solver_has_cuda
+      bundle_solver_mesh_features
+      bundle_cluster_formats
+      bundle_cluster_control_format
+      bundle_cluster_partition_modes
+      bundle_output_name)
+    if("${${bundle_value}}" MATCHES "-NOTFOUND$")
+      set(${bundle_value} "")
+    endif()
+  endforeach()
+  if(bundle_output_name STREQUAL "")
+    set(bundle_output_name "${target}")
+  endif()
+
   string(MAKE_C_IDENTIFIER "${target}" runtime_dependency_set)
   set(runtime_dependency_set "${runtime_dependency_set}_runtime")
 
@@ -123,6 +154,32 @@ function(streamcenterplus_install_solver_bundle target)
   install(TARGETS "${target}"
     RUNTIME_DEPENDENCY_SET "${runtime_dependency_set}"
     RUNTIME DESTINATION "${ARG_DESTINATION}"
+  )
+
+  set(bundle_cluster_manifest
+      "${CMAKE_CURRENT_BINARY_DIR}/streamcenterplus.${target}.cluster.scpa")
+  file(WRITE "${bundle_cluster_manifest}"
+    "# streamcenterplus.cluster.scpa - bundle capability file\n"
+    "schema = streamcenterplus.cluster_bundle.v1\n"
+    "package_schema = streamcenterplus.job_package.v1\n"
+    "package_formats = ${bundle_cluster_formats}\n"
+    "payload_mode = single_archive\n"
+    "control_format = ${bundle_cluster_control_format}\n"
+    "control_file_extension = .scpa,.scpo\n"
+    "partition_modes = ${bundle_cluster_partition_modes}\n"
+    "default_partition_mode = cluster_preflight\n"
+    "solver = ${bundle_solver_name}\n"
+    "version = ${bundle_solver_version}\n"
+    "type = ${bundle_solver_type}\n"
+    "date = ${bundle_solver_build_date}\n"
+    "cpu = ${bundle_solver_has_cpu}\n"
+    "cuda = ${bundle_solver_has_cuda}\n"
+    "mesh_features = ${bundle_solver_mesh_features}\n"
+    "entrypoint = ${bundle_output_name}\n"
+  )
+  install(FILES "${bundle_cluster_manifest}"
+    DESTINATION "${ARG_DESTINATION}"
+    RENAME "streamcenterplus.cluster.scpa"
   )
 
   install(RUNTIME_DEPENDENCY_SET "${runtime_dependency_set}" ${runtime_dependency_args})
