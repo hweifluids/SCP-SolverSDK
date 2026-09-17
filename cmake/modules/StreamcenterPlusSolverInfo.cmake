@@ -33,6 +33,12 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
     set(_streamcenterplus_has_cuda 0)
   endif()
 
+  set(_streamcenterplus_cuda_architectures "${STREAMCENTERPLUS_CMAKE_CUDA_ARCHITECTURES}")
+  if(_streamcenterplus_cuda_architectures)
+    string(REPLACE ";" "," _streamcenterplus_cuda_architectures "${_streamcenterplus_cuda_architectures}")
+  endif()
+  set(_streamcenterplus_cuda_architecture_policy "${STREAMCENTERPLUS_CUDA_ARCHITECTURE_POLICY}")
+
   set(_streamcenterplus_solver_type "structuredmesh")
   if(ARGC GREATER 4)
     set(_streamcenterplus_solver_type "${ARGV4}")
@@ -72,6 +78,9 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
     STREAMCENTERPLUS_CLUSTER_PACKAGE_FORMATS="scpjob.tar"
     STREAMCENTERPLUS_CLUSTER_CONTROL_FORMAT="streamcenterplus_deck_key_value"
     STREAMCENTERPLUS_CLUSTER_PARTITION_MODES="${_streamcenterplus_cluster_partition_modes}"
+    STREAMCENTERPLUS_HARDWARE_AWARENESS=1
+    STREAMCENTERPLUS_CUDA_ARCHITECTURES="${_streamcenterplus_cuda_architectures}"
+    STREAMCENTERPLUS_CUDA_ARCHITECTURE_POLICY="${_streamcenterplus_cuda_architecture_policy}"
   )
   set_target_properties("${target}" PROPERTIES
     OUTPUT_NAME "${solver_name}_solver_${_streamcenterplus_build_date}"

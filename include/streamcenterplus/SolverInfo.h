@@ -1,5 +1,7 @@
 #pragma once
 
+#include <streamcenterplus/HardwareAwareness.h>
+
 #include <iostream>
 #include <string>
 
@@ -43,6 +45,18 @@
 #define STREAMCENTERPLUS_CLUSTER_PARTITION_MODES "cluster_preflight,precomputed"
 #endif
 
+#ifndef STREAMCENTERPLUS_HARDWARE_AWARENESS
+#define STREAMCENTERPLUS_HARDWARE_AWARENESS 1
+#endif
+
+#ifndef STREAMCENTERPLUS_CUDA_ARCHITECTURES
+#define STREAMCENTERPLUS_CUDA_ARCHITECTURES ""
+#endif
+
+#ifndef STREAMCENTERPLUS_CUDA_ARCHITECTURE_POLICY
+#define STREAMCENTERPLUS_CUDA_ARCHITECTURE_POLICY ""
+#endif
+
 namespace streamcenterplus {
 
 inline bool HandleSolverInfoRequest(int argc, char* const* argv) {
@@ -51,6 +65,7 @@ inline bool HandleSolverInfoRequest(int argc, char* const* argv) {
         return false;
     }
 
+    const HardwareAwareness hardware = DetectHardwareAwareness();
     std::cout << "streamcenterplus_solver_identity=1\n"
               << "product=Streamcenter+\n"
               << "type=" STREAMCENTERPLUS_SOLVER_TYPE "\n"
@@ -67,7 +82,17 @@ inline bool HandleSolverInfoRequest(int argc, char* const* argv) {
               << "mesh_features=" STREAMCENTERPLUS_MESH_FEATURES "\n"
               << "cluster_package_formats=" STREAMCENTERPLUS_CLUSTER_PACKAGE_FORMATS "\n"
               << "cluster_control_format=" STREAMCENTERPLUS_CLUSTER_CONTROL_FORMAT "\n"
-              << "cluster_partition_modes=" STREAMCENTERPLUS_CLUSTER_PARTITION_MODES "\n";
+              << "cluster_partition_modes=" STREAMCENTERPLUS_CLUSTER_PARTITION_MODES "\n"
+              << "hardware_awareness=" << (STREAMCENTERPLUS_HARDWARE_AWARENESS ? 1 : 0) << "\n"
+              << "cuda_architectures=" STREAMCENTERPLUS_CUDA_ARCHITECTURES "\n"
+              << "cuda_architecture_policy=" STREAMCENTERPLUS_CUDA_ARCHITECTURE_POLICY "\n"
+              << "runtime.scheduler=" << hardware.scheduler << "\n"
+              << "runtime.scheduler_job_id=" << hardware.schedulerJobId << "\n"
+              << "runtime.mpi_world_size=" << hardware.mpiWorldSize << "\n"
+              << "runtime.mpi_rank=" << hardware.mpiRank << "\n"
+              << "runtime.mpi_local_rank=" << hardware.mpiLocalRank << "\n"
+              << "runtime.cuda_visible_devices=" << hardware.cudaVisibleDevicesRaw << "\n"
+              << "runtime.preferred_cuda_ordinal=" << PreferredCudaDeviceOrdinal(hardware) << "\n";
     return true;
 }
 
