@@ -33,7 +33,7 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
     set(_streamcenterplus_has_cuda 0)
   endif()
 
-  set(_streamcenterplus_cuda_architectures "${STREAMCENTERPLUS_CMAKE_CUDA_ARCHITECTURES}")
+  set(_streamcenterplus_cuda_architectures "${STREAMCENTERPLUS_CUDA_ARCHITECTURES}")
   if(_streamcenterplus_cuda_architectures)
     string(REPLACE ";" "," _streamcenterplus_cuda_architectures "${_streamcenterplus_cuda_architectures}")
   endif()

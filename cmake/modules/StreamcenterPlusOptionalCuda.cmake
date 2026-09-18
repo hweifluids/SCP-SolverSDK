@@ -13,6 +13,22 @@ if(NOT STREAMCENTERPLUS_BUILD_MODE STREQUAL "CpuOnly" AND
     "'${STREAMCENTERPLUS_BUILD_MODE}'.")
 endif()
 
+set(STREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY "Release13_2" CACHE STRING
+    "CUDA toolchain policy: Release13_2 or Adaptive")
+set_property(CACHE STREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY PROPERTY STRINGS
+    Release13_2 Adaptive)
+if(NOT STREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY STREQUAL "Release13_2" AND
+   NOT STREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY STREQUAL "Adaptive")
+  message(FATAL_ERROR
+    "STREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY must be Release13_2 or Adaptive; got "
+    "'${STREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY}'.")
+endif()
+
+set(STREAMCENTERPLUS_CUDA_ADAPTIVE_ARCHITECTURES "" CACHE STRING
+    "Explicit adaptive CUDA architectures, for example 89, 90, or 8.9; empty probes nvidia-smi")
+set(STREAMCENTERPLUS_CUDA_ADAPTIVE_FALLBACK_ARCHITECTURES "" CACHE STRING
+    "Fallback adaptive CUDA architectures used when no local GPU can be probed")
+
 # CUDA 13.2 is the single release toolchain. Embed every base compute capability
 # reported by that toolchain so workstation, data-centre, and embedded NVIDIA
 # systems do not depend on forward JIT. Compile the newest native sm_120 and
@@ -36,6 +52,110 @@ set(STREAMCENTERPLUS_CUDA_COMBINED_BLACKWELL_CODEGEN
     CACHE INTERNAL
     "CUDA 13.2 combined sm_120, sm_121, and forward-PTX code generation"
     FORCE)
+set(STREAMCENTERPLUS_CUDA_ARCHITECTURE_POLICY
+    "release_cuda_13_2_full_fatbin"
+    CACHE INTERNAL
+    "CUDA architecture policy recorded in solver metadata"
+    FORCE)
+
+function(_streamcenterplus_prepare_cuda_architecture_lists
+    output_cmake_architectures
+    output_public_architectures
+    input_architectures)
+  set(_streamcenterplus_architecture_items "${input_architectures}")
+  string(REPLACE "\n" ";" _streamcenterplus_architecture_items
+    "${_streamcenterplus_architecture_items}")
+  string(REPLACE "," ";" _streamcenterplus_architecture_items
+    "${_streamcenterplus_architecture_items}")
+  string(REPLACE " " ";" _streamcenterplus_architecture_items
+    "${_streamcenterplus_architecture_items}")
+
+  set(_streamcenterplus_cmake_architectures)
+  set(_streamcenterplus_public_architectures)
+  set(_streamcenterplus_highest_architecture "")
+  foreach(_streamcenterplus_architecture IN LISTS _streamcenterplus_architecture_items)
+    string(STRIP "${_streamcenterplus_architecture}"
+      _streamcenterplus_architecture)
+    if(_streamcenterplus_architecture STREQUAL "")
+      continue()
+    endif()
+    string(TOLOWER "${_streamcenterplus_architecture}"
+      _streamcenterplus_architecture_lower)
+    string(REGEX REPLACE "^(sm_|compute_)" ""
+      _streamcenterplus_architecture_clean
+      "${_streamcenterplus_architecture_lower}")
+    string(REGEX REPLACE "-(real|virtual)$" ""
+      _streamcenterplus_architecture_clean
+      "${_streamcenterplus_architecture_clean}")
+
+    if(_streamcenterplus_architecture_clean MATCHES "^([0-9]+)\\.([0-9]+)$")
+      math(EXPR _streamcenterplus_architecture_number
+        "${CMAKE_MATCH_1} * 10 + ${CMAKE_MATCH_2}")
+      set(_streamcenterplus_architecture_clean
+        "${_streamcenterplus_architecture_number}")
+    endif()
+
+    if(NOT _streamcenterplus_architecture_clean MATCHES "^[0-9]+$")
+      message(FATAL_ERROR
+        "Invalid CUDA architecture '${_streamcenterplus_architecture}'. "
+        "Use values such as 89, 90, 120, sm_89, compute_90, or 8.9.")
+    endif()
+
+    list(APPEND _streamcenterplus_cmake_architectures
+      "${_streamcenterplus_architecture_clean}-real")
+    list(APPEND _streamcenterplus_public_architectures
+      "${_streamcenterplus_architecture_clean}-real")
+    if(_streamcenterplus_highest_architecture STREQUAL "" OR
+       _streamcenterplus_architecture_clean GREATER
+         _streamcenterplus_highest_architecture)
+      set(_streamcenterplus_highest_architecture
+        "${_streamcenterplus_architecture_clean}")
+    endif()
+  endforeach()
+
+  if(NOT _streamcenterplus_cmake_architectures)
+    message(FATAL_ERROR
+      "No usable CUDA architectures were provided to the adaptive CUDA policy.")
+  endif()
+  list(REMOVE_DUPLICATES _streamcenterplus_cmake_architectures)
+  list(REMOVE_DUPLICATES _streamcenterplus_public_architectures)
+  if(NOT _streamcenterplus_highest_architecture STREQUAL "")
+    list(APPEND _streamcenterplus_public_architectures
+      "${_streamcenterplus_highest_architecture}-virtual")
+  endif()
+
+  set("${output_cmake_architectures}"
+      "${_streamcenterplus_cmake_architectures}" PARENT_SCOPE)
+  set("${output_public_architectures}"
+      "${_streamcenterplus_public_architectures}" PARENT_SCOPE)
+endfunction()
+
+function(_streamcenterplus_detect_local_cuda_architectures output_architectures)
+  find_program(_streamcenterplus_nvidia_smi nvidia-smi)
+  if(NOT _streamcenterplus_nvidia_smi)
+    set("${output_architectures}" "" PARENT_SCOPE)
+    return()
+  endif()
+
+  execute_process(
+    COMMAND "${_streamcenterplus_nvidia_smi}"
+      --query-gpu=compute_cap --format=csv,noheader
+    RESULT_VARIABLE _streamcenterplus_nvidia_smi_result
+    OUTPUT_VARIABLE _streamcenterplus_nvidia_smi_output
+    ERROR_VARIABLE _streamcenterplus_nvidia_smi_error
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_STRIP_TRAILING_WHITESPACE)
+  if(NOT _streamcenterplus_nvidia_smi_result EQUAL 0)
+    message(STATUS
+      "Adaptive CUDA policy could not query nvidia-smi: "
+      "${_streamcenterplus_nvidia_smi_error}")
+    set("${output_architectures}" "" PARENT_SCOPE)
+    return()
+  endif()
+
+  set("${output_architectures}" "${_streamcenterplus_nvidia_smi_output}"
+      PARENT_SCOPE)
+endfunction()
 set(_streamcenterplus_cuda_split_compile_threads_default "2")
 get_property(_streamcenterplus_cuda_split_cache_type_set
   CACHE STREAMCENTERPLUS_CUDA_SPLIT_COMPILE_THREADS PROPERTY TYPE SET)
@@ -113,25 +233,84 @@ unset(_streamcenterplus_cuda_architecture_thread_choices)
 
 set(STREAMCENTERPLUS_CUDA_AVAILABLE OFF)
 if(STREAMCENTERPLUS_BUILD_MODE STREQUAL "CpuCuda")
+  if(STREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY STREQUAL "Adaptive")
+    if(NOT STREAMCENTERPLUS_CUDA_ADAPTIVE_ARCHITECTURES STREQUAL "")
+      set(_streamcenterplus_adaptive_architectures
+        "${STREAMCENTERPLUS_CUDA_ADAPTIVE_ARCHITECTURES}")
+      set(_streamcenterplus_adaptive_architecture_source
+        "STREAMCENTERPLUS_CUDA_ADAPTIVE_ARCHITECTURES")
+    else()
+      _streamcenterplus_detect_local_cuda_architectures(
+        _streamcenterplus_adaptive_architectures)
+      set(_streamcenterplus_adaptive_architecture_source "nvidia-smi")
+    endif()
+    if(_streamcenterplus_adaptive_architectures STREQUAL "" AND
+       NOT STREAMCENTERPLUS_CUDA_ADAPTIVE_FALLBACK_ARCHITECTURES STREQUAL "")
+      set(_streamcenterplus_adaptive_architectures
+        "${STREAMCENTERPLUS_CUDA_ADAPTIVE_FALLBACK_ARCHITECTURES}")
+      set(_streamcenterplus_adaptive_architecture_source
+        "STREAMCENTERPLUS_CUDA_ADAPTIVE_FALLBACK_ARCHITECTURES")
+    endif()
+    if(_streamcenterplus_adaptive_architectures STREQUAL "")
+      message(FATAL_ERROR
+        "Adaptive CUDA policy could not detect a local GPU compute capability. "
+        "Run the configure step on a GPU-visible node or set "
+        "STREAMCENTERPLUS_CUDA_ADAPTIVE_ARCHITECTURES explicitly, for example "
+        "-DSTREAMCENTERPLUS_CUDA_ADAPTIVE_ARCHITECTURES=89.")
+    endif()
+
+    _streamcenterplus_prepare_cuda_architecture_lists(
+      _streamcenterplus_adaptive_cmake_architectures
+      _streamcenterplus_adaptive_public_architectures
+      "${_streamcenterplus_adaptive_architectures}")
+    set(STREAMCENTERPLUS_CMAKE_CUDA_ARCHITECTURES
+        "${_streamcenterplus_adaptive_cmake_architectures}"
+        CACHE INTERNAL
+        "CUDA architectures selected by Streamcenter+ adaptive hardware probe"
+        FORCE)
+    set(STREAMCENTERPLUS_CUDA_ARCHITECTURES
+        "${_streamcenterplus_adaptive_public_architectures}"
+        CACHE INTERNAL
+        "CUDA architectures selected by Streamcenter+ adaptive hardware probe"
+        FORCE)
+    set(STREAMCENTERPLUS_CUDA_COMBINED_BLACKWELL_CODEGEN ""
+        CACHE INTERNAL
+        "Release-only combined Blackwell code generation is disabled in adaptive mode"
+        FORCE)
+    set(STREAMCENTERPLUS_CUDA_ARCHITECTURE_POLICY
+        "adaptive_visible_gpu"
+        CACHE INTERNAL
+        "CUDA architecture policy recorded in solver metadata"
+        FORCE)
+    message(STATUS
+      "Adaptive CUDA policy selected architectures "
+      "${STREAMCENTERPLUS_CUDA_ARCHITECTURES} from "
+      "${_streamcenterplus_adaptive_architecture_source}.")
+  endif()
+
   set(CMAKE_CUDA_ARCHITECTURES "${STREAMCENTERPLUS_CMAKE_CUDA_ARCHITECTURES}"
-      CACHE STRING "CUDA architectures selected by Streamcenter+ release policy" FORCE)
+      CACHE STRING "CUDA architectures selected by Streamcenter+ CUDA policy" FORCE)
 
   check_language(CUDA)
   if(NOT CMAKE_CUDA_COMPILER)
     message(FATAL_ERROR
-      "CpuCuda mode requires the CUDA 13.2 compiler, but CMake could not find nvcc. "
-      "Install CUDA Toolkit 13.2 or configure with STREAMCENTERPLUS_BUILD_MODE=CpuOnly.")
+      "CpuCuda mode requires the CUDA compiler, but CMake could not find nvcc. "
+      "Install CUDA Toolkit or configure with STREAMCENTERPLUS_BUILD_MODE=CpuOnly.")
   endif()
 
   enable_language(CUDA)
-  find_package(CUDAToolkit 13.2 REQUIRED)
-  if(CUDAToolkit_VERSION VERSION_LESS "13.2" OR
-     NOT CUDAToolkit_VERSION VERSION_LESS "13.3" OR
-     CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.2" OR
-     NOT CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.3")
-    message(FATAL_ERROR
-      "CpuCuda release builds require CUDA Toolkit/compiler 13.2.x exactly; "
-      "found toolkit ${CUDAToolkit_VERSION} and compiler ${CMAKE_CUDA_COMPILER_VERSION}.")
+  if(STREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY STREQUAL "Release13_2")
+    find_package(CUDAToolkit 13.2 REQUIRED)
+    if(CUDAToolkit_VERSION VERSION_LESS "13.2" OR
+       NOT CUDAToolkit_VERSION VERSION_LESS "13.3" OR
+       CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.2" OR
+       NOT CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.3")
+      message(FATAL_ERROR
+        "CpuCuda release builds require CUDA Toolkit/compiler 13.2.x exactly; "
+        "found toolkit ${CUDAToolkit_VERSION} and compiler ${CMAKE_CUDA_COMPILER_VERSION}.")
+    endif()
+  else()
+    find_package(CUDAToolkit REQUIRED)
   endif()
 
   set(STREAMCENTERPLUS_CUDA_AVAILABLE ON)
@@ -301,7 +480,7 @@ function(streamcenterplus_apply_cuda_release_codegen target)
   endif()
   if(NOT STREAMCENTERPLUS_CUDA_AVAILABLE)
     message(FATAL_ERROR
-      "streamcenterplus_apply_cuda_release_codegen requires an enabled CUDA 13.2 backend.")
+      "streamcenterplus_apply_cuda_release_codegen requires an enabled CUDA backend.")
   endif()
 
   set(_streamcenterplus_parallel_cap_arguments)
@@ -320,18 +499,20 @@ function(streamcenterplus_apply_cuda_release_codegen target)
     _streamcenterplus_split_compile_threads_cap
     ${_streamcenterplus_parallel_cap_arguments})
 
-  # CMake maps `121-real` to a separate compute_121 front-end invocation. CUDA
-  # 13.2 cannot compile the largest Streamcenter+ translation units through that
-  # front end. Emit the older architectures through CMake, then use one explicit
-  # compute_120 invocation for native sm_120, native sm_121, and retained PTX.
-  # This is also faster than compiling the same fully optimized device IR three
-  # times and preserves the exact public fat-binary contract above.
   set_property(TARGET "${target}" PROPERTY CUDA_ARCHITECTURES
     "${STREAMCENTERPLUS_CMAKE_CUDA_ARCHITECTURES}")
   target_compile_options("${target}" PRIVATE
-    $<$<COMPILE_LANGUAGE:CUDA>:${STREAMCENTERPLUS_CUDA_COMBINED_BLACKWELL_CODEGEN}>
-    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
-  )
+    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+  if(STREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY STREQUAL "Release13_2")
+    # CMake maps `121-real` to a separate compute_121 front-end invocation. CUDA
+    # 13.2 cannot compile the largest Streamcenter+ translation units through
+    # that front end. Emit the older architectures through CMake, then use one
+    # explicit compute_120 invocation for native sm_120, native sm_121, and
+    # retained PTX.
+    target_compile_options("${target}" PRIVATE
+      $<$<COMPILE_LANGUAGE:CUDA>:${STREAMCENTERPLUS_CUDA_COMBINED_BLACKWELL_CODEGEN}>
+    )
+  endif()
   if(NOT _streamcenterplus_effective_split_compile_threads STREQUAL "1")
     target_compile_options("${target}" PRIVATE
       $<$<COMPILE_LANGUAGE:CUDA>:--split-compile=${_streamcenterplus_effective_split_compile_threads}>
@@ -430,7 +611,8 @@ function(streamcenterplus_add_optional_cuda target)
     streamcenterplus_apply_cuda_release_codegen(
       "${target}" ${_streamcenterplus_parallel_cap_arguments})
     message(STATUS
-      "${target}: CUDA 13.2 backend enabled (${CMAKE_CUDA_COMPILER}); "
+      "${target}: CUDA backend enabled (${CMAKE_CUDA_COMPILER}; "
+      "policy=${STREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY}); "
       "fat binary=${STREAMCENTERPLUS_CUDA_ARCHITECTURES}.")
   else()
     target_compile_definitions("${target}" PUBLIC STREAMCENTERPLUS_HAS_CUDA=0)

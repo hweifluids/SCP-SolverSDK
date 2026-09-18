@@ -37,7 +37,7 @@ written catalog.
 - CMake 3.24 or newer.
 - A C++17 compiler for consuming applications.
 - Windows: Visual Studio 2022 C++ Build Tools with the v143 toolset and an x64 Windows SDK. The Windows installer and smoke consumer deliberately use this toolchain rather than compilers discovered from `PATH`.
-- CUDA, MPI, VTK, HDF5, and other numerical dependencies are requirements of individual consumers, not of this SDK. `CpuCuda` consumers require CUDA Toolkit 13.2.x exactly.
+- CUDA, MPI, VTK, HDF5, and other numerical dependencies are requirements of individual consumers, not of this SDK. `CpuCuda` defaults to the release CUDA 13.2.x policy; an explicit adaptive policy can instead probe the build host GPU and use the local CUDA Toolkit.
 
 The SDK itself has no network dependency because it contains no third-party package download. A normal Streamcenter+ target may be online so solver repositories can fetch their separately pinned dependencies on first installation.
 
@@ -89,7 +89,19 @@ Pass the SDK installation prefix through CMake's `CMAKE_PREFIX_PATH` or `<Packag
 
 ## CPU/CUDA build modes
 
-Including `StreamcenterPlusOptionalCuda.cmake` defines the cache setting `STREAMCENTERPLUS_BUILD_MODE`, whose supported values are `CpuOnly` (the default) and `CpuCuda`. `CpuOnly` never probes or enables the CUDA language. `CpuCuda` fails configuration unless both nvcc and CUDAToolkit are CUDA 13.2.x, then compiles a single hybrid solver target for every base compute capability reported by that toolchain: `sm_75`, `sm_80`, `sm_86`, `sm_87`, `sm_88`, `sm_89`, `sm_90`, `sm_100`, `sm_103`, `sm_110`, `sm_120`, and `sm_121`, plus a `compute_120` PTX fallback. The fully optimized compute-120 device IR feeds both native sm-120 and sm-121 assembly, and the retained PTX remains forward-compatible with newer devices. Runtime selection remains the solver configuration's `compute_backend=cpu|cuda` setting.
+Including `StreamcenterPlusOptionalCuda.cmake` defines the cache setting `STREAMCENTERPLUS_BUILD_MODE`, whose supported values are `CpuOnly` (the default) and `CpuCuda`. `CpuOnly` never probes or enables the CUDA language. `CpuCuda` then follows `STREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY`, whose supported values are `Release13_2` (the default) and `Adaptive`.
+
+`Release13_2` is the reproducible release path. It fails configuration unless both nvcc and CUDAToolkit are CUDA 13.2.x, then compiles a single hybrid solver target for every base compute capability reported by that toolchain: `sm_75`, `sm_80`, `sm_86`, `sm_87`, `sm_88`, `sm_89`, `sm_90`, `sm_100`, `sm_103`, `sm_110`, `sm_120`, and `sm_121`, plus a `compute_120` PTX fallback. The fully optimized compute-120 device IR feeds both native sm-120 and sm-121 assembly, and the retained PTX remains forward-compatible with newer devices.
+
+`Adaptive` is the hardware-aware local or node-side build path. It queries `nvidia-smi --query-gpu=compute_cap --format=csv,noheader`, converts visible GPU capabilities such as `8.9` into CMake CUDA architectures such as `89-real`, and keeps PTX for the highest detected architecture. If the configure environment cannot see a GPU, pass `-DSTREAMCENTERPLUS_CUDA_ADAPTIVE_ARCHITECTURES=89` or set `-DSTREAMCENTERPLUS_CUDA_ADAPTIVE_FALLBACK_ARCHITECTURES=89` for login-node builds. Runtime selection remains the solver configuration's `compute_backend=cpu|cuda` setting.
+
+Example adaptive configure:
+
+```bash
+cmake -S <solver> -B build-cuda-adaptive \
+  -DSTREAMCENTERPLUS_BUILD_MODE=CpuCuda \
+  -DSTREAMCENTERPLUS_CUDA_TOOLCHAIN_POLICY=Adaptive
+```
 
 The global requests default to 12 architecture workers and two split-compile optimizer threads. Every CUDA target then applies a finite local safety cap: both caps default to 2 unless the module explicitly opts into a measured higher value. The effective value is the lesser of the request and cap; request value `0` means “use this target's cap”, not unbounded host concurrency. `streamcenterplus_add_optional_cuda` and `streamcenterplus_apply_cuda_release_codegen` accept the named one-value arguments `ARCHITECTURE_THREADS_CAP` and `SPLIT_COMPILE_THREADS_CAP`. Configuration reports the requested, capped, and effective values separately so a packaging log is auditable.
 
