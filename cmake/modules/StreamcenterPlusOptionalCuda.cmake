@@ -120,6 +120,8 @@ function(_streamcenterplus_prepare_cuda_architecture_lists
   list(REMOVE_DUPLICATES _streamcenterplus_cmake_architectures)
   list(REMOVE_DUPLICATES _streamcenterplus_public_architectures)
   if(NOT _streamcenterplus_highest_architecture STREQUAL "")
+    list(APPEND _streamcenterplus_cmake_architectures
+      "${_streamcenterplus_highest_architecture}-virtual")
     list(APPEND _streamcenterplus_public_architectures
       "${_streamcenterplus_highest_architecture}-virtual")
   endif()

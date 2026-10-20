@@ -1,0 +1,6 @@
+set(STREAMCENTERPLUS_BUILD_MODE CpuOnly)
+include("${SCP_SOLVER_SDK_SOURCE_DIR}/cmake/modules/StreamcenterPlusOptionalCuda.cmake")
+_streamcenterplus_prepare_cuda_architecture_lists(actual metadata "8.9,sm_90,89")
+if(NOT actual STREQUAL "89-real;90-real;90-virtual" OR NOT actual STREQUAL metadata)
+  message(FATAL_ERROR "Adaptive codegen/metadata mismatch: ${actual} / ${metadata}")
+endif()
