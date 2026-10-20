@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.24)
+project(AdaptiveCudaFixture LANGUAGES CXX)
+include("${SCP_SOLVER_SDK_SOURCE_DIR}/cmake/modules/StreamcenterPlusOptionalCuda.cmake")
+add_library(adaptive STATIC dummy.cpp)
+streamcenterplus_add_optional_cuda(adaptive SOURCES kernel.cu)
