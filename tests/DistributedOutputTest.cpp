@@ -33,10 +33,12 @@ int main(int argc, char** argv) {
     streamcenterplus::distributed::Runtime runtime;
     return runtime.Guard([&] {
         const auto hardware = streamcenterplus::DetectHardwareAwareness();
+#ifdef STREAMCENTERPLUS_CLUSTER_MPI
+        // A serial executable may run inside a larger Slurm allocation; its
+        // scheduler metadata need not equal a one-process Runtime communicator.
         Require(hardware.mpiRank == runtime.rank() && hardware.mpiWorldSize == runtime.size(),
                 "Hardware probe disagrees with initialized MPI communicator.");
         Require(hardware.mpiLocalRank == runtime.localRank(), "Hardware probe lost the node-local MPI rank.");
-#ifdef STREAMCENTERPLUS_CLUSTER_MPI
         MPI_Comm local = MPI_COMM_NULL;
         Require(MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED,
                                    runtime.rank(), MPI_INFO_NULL, &local) == MPI_SUCCESS,
