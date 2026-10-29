@@ -44,30 +44,6 @@ public:
 
     std::string Broadcast(std::string value) const {
 #ifdef STREAMCENTERPLUS_CLUSTER_MPI
-    struct MpiLifetime {
-        bool owned = false;
-        MpiLifetime() {
-            int finalized = 0;
-            MPI_Finalized(&finalized);
-            if (finalized) throw std::runtime_error("MPI cannot be restarted after finalization.");
-            int initialized = 0;
-            Check(MPI_Initialized(&initialized));
-            if (!initialized) {
-                int provided = 0;
-                Check(MPI_Init_thread(nullptr, nullptr, MPI_THREAD_FUNNELED, &provided));
-                owned = true;
-                if (provided < MPI_THREAD_FUNNELED) {
-                    MPI_Abort(MPI_COMM_WORLD, 1);
-                    throw std::runtime_error("MPI thread support is insufficient.");
-                }
-            }
-        }
-        ~MpiLifetime() {
-            int finalized = 0;
-            MPI_Finalized(&finalized);
-            if (owned && !finalized) MPI_Finalize();
-        }
-    };
         unsigned long long count = value.size();
         Check(MPI_Bcast(&count, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD));
         if (count > static_cast<unsigned long long>(std::numeric_limits<int>::max())) {
@@ -113,6 +89,30 @@ public:
     }
 private:
 #ifdef STREAMCENTERPLUS_CLUSTER_MPI
+    struct MpiLifetime {
+        bool owned = false;
+        MpiLifetime() {
+            int finalized = 0;
+            MPI_Finalized(&finalized);
+            if (finalized) throw std::runtime_error("MPI cannot be restarted after finalization.");
+            int initialized = 0;
+            Check(MPI_Initialized(&initialized));
+            if (!initialized) {
+                int provided = 0;
+                Check(MPI_Init_thread(nullptr, nullptr, MPI_THREAD_FUNNELED, &provided));
+                owned = true;
+                if (provided < MPI_THREAD_FUNNELED) {
+                    MPI_Abort(MPI_COMM_WORLD, 1);
+                    throw std::runtime_error("MPI thread support is insufficient.");
+                }
+            }
+        }
+        ~MpiLifetime() {
+            int finalized = 0;
+            MPI_Finalized(&finalized);
+            if (owned && !finalized) MPI_Finalize();
+        }
+    };
     static void Check(int status) {
         if (status != MPI_SUCCESS) {
             MPI_Abort(MPI_COMM_WORLD, status);
