@@ -21,7 +21,7 @@ elseif(TEST_FAILURE_MODE STREQUAL "missing-version")
   streamcenterplus_configure_solver_info(info_fixture Test ON OFF)
 elseif(TEST_FAILURE_MODE STREQUAL "extra-argument")
   streamcenterplus_configure_solver_info(
-    info_fixture Test ON OFF structuredmesh single_static unexpected)
+    info_fixture Test ON OFF structuredmesh single_static precomputed unexpected)
 elseif(TEST_FAILURE_MODE STREQUAL "invalid-features")
   streamcenterplus_configure_solver_info(
     info_fixture Test ON OFF structuredmesh "single_static,,transient")
@@ -30,6 +30,13 @@ elseif(TEST_FAILURE_MODE STREQUAL "invalid-bool")
 elseif(TEST_FAILURE_MODE STREQUAL "none")
   streamcenterplus_configure_solver_info(
     info_fixture Test ON OFF structuredmesh "single_static,transient")
+  add_executable(info_cluster_fixture dummy.cpp)
+  streamcenterplus_configure_solver_info(info_cluster_fixture ClusterTest ON OFF
+    unstructuredmesh single_static "cluster_preflight,precomputed")
+  get_target_property(_partition_modes info_cluster_fixture STREAMCENTERPLUS_CLUSTER_PARTITION_MODES)
+  if(NOT _partition_modes STREQUAL "cluster_preflight,precomputed")
+    message(FATAL_ERROR "Cluster partition modes were not retained.")
+  endif()
   get_target_property(_output_name info_fixture OUTPUT_NAME)
   if(NOT _output_name MATCHES
      "^Test_solver_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$")

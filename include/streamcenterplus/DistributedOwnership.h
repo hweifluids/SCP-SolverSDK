@@ -71,7 +71,9 @@ inline Ownership BuildOwnership(const Plan& plan, int rank, OwnershipLocation pr
 
 inline bool Contains(const Ownership& ownership, std::size_t item) {
     if (ownership.ownedRanges.empty()) {
-        return true;
+        // An empty assignment is a zero-work rank. Callers representing an
+        // unpartitioned domain must explicitly provide its complete range.
+        return false;
     }
     for (const Range& range : ownership.ownedRanges) {
         if (item >= range.start && item < range.end) {

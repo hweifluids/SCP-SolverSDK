@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.24)
 set(STREAMCENTERPLUS_BUILD_MODE CpuOnly)
 include("${SCP_SOLVER_SDK_SOURCE_DIR}/cmake/modules/StreamcenterPlusOptionalCuda.cmake")
 _streamcenterplus_prepare_cuda_architecture_lists(actual metadata "8.9,sm_90,89")

@@ -14,22 +14,16 @@
 
 namespace streamcenterplus::distributed {
 
-// Own initialization only when the embedding application has not initialized MPI.
+// Share MPI initialization across solver calls. MPI cannot be restarted after
+// Finalize, so a process-owned session outlives individual Runtime instances.
 class Runtime {
 public:
     Runtime() {
 #ifdef STREAMCENTERPLUS_CLUSTER_MPI
-        int initialized = 0;
-        Check(MPI_Initialized(&initialized));
-        if (!initialized) {
-            int provided = 0;
-            Check(MPI_Init_thread(nullptr, nullptr, MPI_THREAD_FUNNELED, &provided));
-            ownsMpi_ = true;
-            if (provided < MPI_THREAD_FUNNELED) {
-                MPI_Abort(MPI_COMM_WORLD, 1);
-                throw std::runtime_error("MPI thread support is insufficient.");
-            }
-        }
+        static MpiLifetime lifetime;
+        int finalized = 0;
+        MPI_Finalized(&finalized);
+        if (finalized) throw std::runtime_error("The external MPI session has already been finalized.");
         Check(MPI_Comm_rank(MPI_COMM_WORLD, &rank_));
         Check(MPI_Comm_size(MPI_COMM_WORLD, &size_));
 #else
@@ -43,19 +37,37 @@ public:
     }
     Runtime(const Runtime&) = delete;
     Runtime& operator=(const Runtime&) = delete;
-    ~Runtime() {
-#ifdef STREAMCENTERPLUS_CLUSTER_MPI
-        if (ownsMpi_) {
-            MPI_Finalize();
-        }
-#endif
-    }
+    ~Runtime() = default;
     int rank() const { return rank_; }
     int size() const { return size_; }
     bool coordinator() const { return rank_ == 0; }
 
     std::string Broadcast(std::string value) const {
 #ifdef STREAMCENTERPLUS_CLUSTER_MPI
+    struct MpiLifetime {
+        bool owned = false;
+        MpiLifetime() {
+            int finalized = 0;
+            MPI_Finalized(&finalized);
+            if (finalized) throw std::runtime_error("MPI cannot be restarted after finalization.");
+            int initialized = 0;
+            Check(MPI_Initialized(&initialized));
+            if (!initialized) {
+                int provided = 0;
+                Check(MPI_Init_thread(nullptr, nullptr, MPI_THREAD_FUNNELED, &provided));
+                owned = true;
+                if (provided < MPI_THREAD_FUNNELED) {
+                    MPI_Abort(MPI_COMM_WORLD, 1);
+                    throw std::runtime_error("MPI thread support is insufficient.");
+                }
+            }
+        }
+        ~MpiLifetime() {
+            int finalized = 0;
+            MPI_Finalized(&finalized);
+            if (owned && !finalized) MPI_Finalize();
+        }
+    };
         unsigned long long count = value.size();
         Check(MPI_Bcast(&count, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD));
         if (count > static_cast<unsigned long long>(std::numeric_limits<int>::max())) {
@@ -107,7 +119,6 @@ private:
             throw std::runtime_error("MPI runtime operation failed.");
         }
     }
-    bool ownsMpi_ = false;
 #endif
     int rank_ = 0;
     int size_ = 1;

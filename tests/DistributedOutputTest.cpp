@@ -1,4 +1,5 @@
 #include <streamcenterplus/DistributedRuntime.h>
+#include <streamcenterplus/DistributedOwnership.h>
 #include <streamcenterplus/RankAwareOutput.h>
 
 #include <filesystem>
@@ -15,7 +16,7 @@ void Require(bool value, const char* message) {
 template<class Function> void Reject(Function function) {
     bool rejected = false;
     try { function(); } catch (const std::exception&) { rejected = true; }
-    Require(rejected, "Invalid shard was accepted.");
+    Require(rejected, "Invalid distributed input was accepted.");
 }
 void Write(const fs::path& path, const std::string& value) {
     fs::create_directories(path.parent_path());
@@ -26,6 +27,9 @@ void Write(const fs::path& path, const std::string& value) {
 }
 
 int main(int argc, char** argv) {
+    // A second solver in the same host process must reuse the MPI session.
+    { streamcenterplus::distributed::Runtime first; first.Barrier(); }
+    { streamcenterplus::distributed::Runtime second; second.Barrier(); }
     streamcenterplus::distributed::Runtime runtime;
     return runtime.Guard([&] {
         if (argc != 2) throw std::runtime_error("Expected fixture directory.");
@@ -35,6 +39,34 @@ int main(int argc, char** argv) {
             fs::create_directories(root);
         }
         runtime.Barrier();
+        const auto planPath = root / ("plan-" + std::to_string(runtime.rank()) + ".scpa");
+        const std::string validPlan =
+            "rank_count = 2\nassignment_count = 1\n"
+            "assignment.0.path = mesh.vtu\nassignment.0.kind = cell_block\n"
+            "assignment.0.rank = 0\nassignment.0.range_start = 0\n"
+            "assignment.0.range_end = 4\n";
+        Write(planPath, validPlan);
+        namespace partition = streamcenterplus::partition;
+        const auto plan = partition::LoadPlan(planPath);
+        const auto assigned = partition::BuildOwnership(plan, 0, partition::OwnershipLocation::Cells);
+        const auto empty = partition::BuildOwnership(plan, 1, partition::OwnershipLocation::Cells);
+        Require(partition::Contains(assigned, 0) && partition::Contains(assigned, 3) &&
+                !partition::Contains(assigned, 4) && !partition::Contains(empty, 0) &&
+                empty.ownedItemCount() == 0, "Empty or boundary ownership is incorrect.");
+        for (const auto& replacement : {
+                 std::pair<std::string, std::string>{"rank_count = 2", "rank_count = 2garbage"},
+                 {"rank_count = 2", "rank_count = 0"},
+                 {"assignment_count = 1", "assignment_count = 999999999"},
+                 {"assignment.0.rank = 0", "assignment.0.rank = 2"},
+                 {"assignment.0.range_end = 4", "assignment.0.range_end = -1"},
+                 {"assignment.0.range_end = 4", "assignment.0.range_end = 4suffix"}}) {
+            auto invalid = validPlan;
+            invalid.replace(invalid.find(replacement.first), replacement.first.size(), replacement.second);
+            Write(planPath, invalid);
+            Reject([&] { partition::LoadPlan(planPath); });
+        }
+        Write(planPath, validPlan + "rank_count = 3\n");
+        Reject([&] { partition::LoadPlan(planPath); });
         auto context = output::MakeContext(root, runtime.rank(), runtime.size(), true, "run-new");
         // Serial test still exercises a two-shard assembly without an MPI dependency.
         if (runtime.size() == 1) context = output::MakeContext(root, 0, 2, true, "run-new");

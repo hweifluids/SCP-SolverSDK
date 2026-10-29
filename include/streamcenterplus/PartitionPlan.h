@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -75,8 +76,13 @@ inline std::map<std::string, std::string> ReadKeyValueFile(const std::filesystem
         std::string key = Trim(line.substr(0, eq));
         std::string value = Trim(line.substr(eq + 1));
         if (!key.empty()) {
-            fields[key] = value;
+            if (!fields.emplace(key, value).second) {
+                throw std::runtime_error("Duplicate partition plan field: " + key);
+            }
         }
+    }
+    if (!input.eof()) {
+        throw std::runtime_error("Failed reading partition plan: " + path.string());
     }
     return fields;
 }
@@ -89,10 +95,12 @@ inline int IntField(const std::map<std::string, std::string>& fields,
         return fallback;
     }
     try {
-        return std::stoi(it->second);
+        std::size_t consumed = 0;
+        const int value = std::stoi(it->second, &consumed);
+        if (consumed == it->second.size()) return value;
     } catch (...) {
-        return fallback;
     }
+    throw std::runtime_error("Invalid integer partition plan field: " + key);
 }
 
 inline long long LongLongField(const std::map<std::string, std::string>& fields,
@@ -103,10 +111,12 @@ inline long long LongLongField(const std::map<std::string, std::string>& fields,
         return fallback;
     }
     try {
-        return std::stoll(it->second);
+        std::size_t consumed = 0;
+        const long long value = std::stoll(it->second, &consumed);
+        if (consumed == it->second.size()) return value;
     } catch (...) {
-        return fallback;
     }
+    throw std::runtime_error("Invalid integer partition plan field: " + key);
 }
 
 inline std::string StringField(const std::map<std::string, std::string>& fields,
@@ -137,11 +147,17 @@ inline Plan LoadPlan(const std::filesystem::path& path) {
     plan.ownership = StringField(fields, "partition.ownership");
     plan.methodEffective = StringField(fields, "partition.method.effective");
     plan.engineEffective = StringField(fields, "partition.engine.effective");
-    plan.rankCount = std::max(1, IntField(fields, "rank_count", 1));
-    plan.ghostLayers = std::max(0, IntField(fields, "partition.ghost_layers", 0));
+    plan.rankCount = IntField(fields, "rank_count", 1);
+    plan.ghostLayers = IntField(fields, "partition.ghost_layers", 0);
+    if (plan.rankCount < 1 || plan.ghostLayers < 0) {
+        throw std::runtime_error("Invalid partition rank count or ghost layers.");
+    }
 
     const int assignmentCount = IntField(fields, "assignment_count", 0);
-    plan.assignments.reserve(static_cast<std::size_t>(std::max(0, assignmentCount)));
+    if (assignmentCount < 0 || static_cast<std::size_t>(assignmentCount) > fields.size()) {
+        throw std::runtime_error("Invalid partition assignment count.");
+    }
+    plan.assignments.reserve(static_cast<std::size_t>(assignmentCount));
     for (int index = 0; index < assignmentCount; ++index) {
         const std::string prefix = "assignment." + std::to_string(index) + ".";
         Assignment assignment;
@@ -152,6 +168,15 @@ inline Plan LoadPlan(const std::filesystem::path& path) {
         assignment.gpuDevice = StringField(fields, prefix + "gpu_device");
         const long long start = LongLongField(fields, prefix + "range_start", -1);
         const long long end = LongLongField(fields, prefix + "range_end", -1);
+        const bool hasRange = fields.count(prefix + "range_start") ||
+                              fields.count(prefix + "range_end");
+        if (assignment.rank < 0 || assignment.rank >= plan.rankCount ||
+            assignment.bytes < 0 ||
+            (hasRange && (start < 0 || end < start ||
+             static_cast<unsigned long long>(end) >
+                 std::numeric_limits<std::size_t>::max()))) {
+            throw std::runtime_error("Invalid partition assignment: " + prefix);
+        }
         if (start >= 0 && end > start) {
             assignment.range.start = static_cast<std::size_t>(start);
             assignment.range.end = static_cast<std::size_t>(end);

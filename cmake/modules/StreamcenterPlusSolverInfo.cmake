@@ -71,9 +71,9 @@ function(_streamcenterplus_validate_linked_cuda_capability target expected_capab
 endfunction()
 
 function(streamcenterplus_configure_solver_info target solver_name has_cpu has_cuda)
-  if(ARGC LESS 4 OR ARGC GREATER 6)
+  if(ARGC LESS 4 OR ARGC GREATER 7)
     message(FATAL_ERROR
-      "streamcenterplus_configure_solver_info expects 4 to 6 arguments; received ${ARGC}.")
+      "streamcenterplus_configure_solver_info expects 4 to 7 arguments; received ${ARGC}.")
   endif()
   if(NOT TARGET "${target}")
     message(FATAL_ERROR "streamcenterplus_configure_solver_info: target '${target}' does not exist.")
@@ -177,7 +177,7 @@ function(streamcenterplus_configure_solver_info target solver_name has_cpu has_c
   if(ARGC GREATER 6)
     set(_streamcenterplus_cluster_partition_modes "${ARGV6}")
   endif()
-  if(NOT _streamcenterplus_cluster_partition_modes MATCHES "^[A-Za-z0-9_,-]+$")
+  if(NOT _streamcenterplus_cluster_partition_modes MATCHES "^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$")
     message(FATAL_ERROR
       "Cluster partition modes for target '${target}' must be a comma-separated identifier list; received '${_streamcenterplus_cluster_partition_modes}'.")
   endif()
