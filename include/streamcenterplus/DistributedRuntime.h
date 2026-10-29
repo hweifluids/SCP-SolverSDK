@@ -1,5 +1,7 @@
 #pragma once
 
+#include <streamcenterplus/HardwareAwareness.h>
+
 #include <array>
 #include <cstdlib>
 #include <limits>
@@ -26,6 +28,17 @@ public:
         if (finalized) throw std::runtime_error("The external MPI session has already been finalized.");
         Check(MPI_Comm_rank(MPI_COMM_WORLD, &rank_));
         Check(MPI_Comm_size(MPI_COMM_WORLD, &size_));
+        auto& topology = hardware_detail::MpiTopologyCache();
+        if (topology.size == 0) {
+            MPI_Comm local = MPI_COMM_NULL;
+            Check(MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED,
+                                     rank_, MPI_INFO_NULL, &local));
+            Check(MPI_Comm_rank(local, &localRank_));
+            Check(MPI_Comm_free(&local));
+            topology = {size_, rank_, localRank_};
+        } else {
+            localRank_ = topology.localRank;
+        }
 #else
         for (const char* key : {"OMPI_COMM_WORLD_SIZE", "PMI_SIZE", "PMIX_SIZE"}) {
             const char* value = std::getenv(key);
@@ -40,6 +53,7 @@ public:
     ~Runtime() = default;
     int rank() const { return rank_; }
     int size() const { return size_; }
+    int localRank() const { return localRank_; }
     bool coordinator() const { return rank_ == 0; }
 
     std::string Broadcast(std::string value) const {
@@ -122,6 +136,7 @@ private:
 #endif
     int rank_ = 0;
     int size_ = 1;
+    int localRank_ = 0;
 };
 
 }  // namespace streamcenterplus::distributed

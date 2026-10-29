@@ -32,6 +32,28 @@ int main(int argc, char** argv) {
     { streamcenterplus::distributed::Runtime second; second.Barrier(); }
     streamcenterplus::distributed::Runtime runtime;
     return runtime.Guard([&] {
+        const auto hardware = streamcenterplus::DetectHardwareAwareness();
+        Require(hardware.mpiRank == runtime.rank() && hardware.mpiWorldSize == runtime.size(),
+                "Hardware probe disagrees with initialized MPI communicator.");
+        Require(hardware.mpiLocalRank == runtime.localRank(), "Hardware probe lost the node-local MPI rank.");
+#ifdef STREAMCENTERPLUS_CLUSTER_MPI
+        MPI_Comm local = MPI_COMM_NULL;
+        Require(MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED,
+                                   runtime.rank(), MPI_INFO_NULL, &local) == MPI_SUCCESS,
+                "Could not query shared-memory communicator.");
+        int expectedLocalRank = -1;
+        MPI_Comm_rank(local, &expectedLocalRank);
+        MPI_Comm_free(&local);
+        Require(runtime.localRank() == expectedLocalRank, "Runtime cached an incorrect node-local rank.");
+#endif
+        streamcenterplus::HardwareAwareness unmasked;
+        unmasked.mpiLocalRank = 3;
+        Require(streamcenterplus::PreferredCudaDeviceOrdinal(unmasked) == 3,
+                "Unmasked CUDA selection collapsed node-local ranks to device zero.");
+        unmasked.cudaVisibleDevices = {"0", "1"};
+        Require(streamcenterplus::PreferredCudaDeviceOrdinal(unmasked) == 1,
+                "CUDA selection ignored visible device remapping.");
+        std::cout << "rank " << runtime.rank() << ", local rank " << hardware.mpiLocalRank << '\n';
         if (argc != 2) throw std::runtime_error("Expected fixture directory.");
         const fs::path root = argv[1];
         if (runtime.coordinator()) {

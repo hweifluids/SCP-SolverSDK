@@ -8,6 +8,21 @@
 
 namespace streamcenterplus {
 
+namespace hardware_detail {
+struct MpiTopology {
+    int size = 0;
+    int rank = 0;
+    int localRank = 0;
+};
+
+// Populated collectively by distributed::Runtime. Hardware probes themselves
+// must remain noncollective because callers may probe only the coordinator.
+inline MpiTopology& MpiTopologyCache() {
+    static MpiTopology topology;
+    return topology;
+}
+}  // namespace hardware_detail
+
 struct HardwareAwareness {
     std::string scheduler = "local";
     std::string schedulerJobId;
@@ -80,6 +95,13 @@ inline HardwareAwareness DetectHardwareAwareness() {
     info.mpiLocalRank = EnvironmentInt("MV2_COMM_WORLD_LOCAL_RANK", info.mpiLocalRank);
     info.mpiLocalRank = EnvironmentInt("SLURM_LOCALID", info.mpiLocalRank);
 
+    const auto& topology = hardware_detail::MpiTopologyCache();
+    if (topology.size > 0) {
+        info.mpiWorldSize = topology.size;
+        info.mpiRank = topology.rank;
+        info.mpiLocalRank = topology.localRank;
+    }
+
     info.cudaVisibleDevicesRaw = EnvironmentValue("CUDA_VISIBLE_DEVICES");
     info.cudaVisibleDevices = SplitVisibleDevices(info.cudaVisibleDevicesRaw);
     return info;
@@ -88,7 +110,9 @@ inline HardwareAwareness DetectHardwareAwareness() {
 inline int PreferredCudaDeviceOrdinal(const HardwareAwareness& info) {
     const int visibleCount = static_cast<int>(info.cudaVisibleDevices.size());
     if (visibleCount <= 0) {
-        return 0;
+        // With no visibility override, the CUDA caller applies its actual
+        // cudaGetDeviceCount() limit to this node-local ordinal.
+        return std::max(0, info.mpiLocalRank);
     }
     const int localRank = std::max(0, info.mpiLocalRank);
     return localRank % visibleCount;
