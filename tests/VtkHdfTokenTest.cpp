@@ -88,6 +88,18 @@ int main() {
 
     TemporaryDirectory temporary;
 #if !defined(_WIN32)
+    const auto absentBase = temporary.path / "absent-parent" / "missing.vtkhdf";
+    const auto absentToken = vtkhdf::MakeStepToken(absentBase, 3);
+    std::error_code absentError;
+    const auto absentStatus = std::filesystem::symlink_status(absentToken, absentError);
+    if (std::filesystem::exists(absentStatus)
+        || (absentError && absentError != std::errc::no_such_file_or_directory)) {
+        return Fail("The missing-token fixture did not report ordinary path absence.");
+    }
+    if (!vtkhdf::ParseStepToken(absentToken, &parsedPath, &parsedStep)
+        || parsedPath != absentBase || parsedStep != 3) {
+        return Fail("A POSIX synthetic token failed because its native path is absent.");
+    }
     const std::filesystem::path markerNamedFile =
         temporary.path / "frame.vtkhdf|vtkhdf_step=000000000042";
     {
@@ -99,6 +111,12 @@ int main() {
     if (vtkhdf::ParseStepToken(markerNamedFile, &parsedPath, &parsedStep)
         || parsedPath != markerNamedFile || parsedStep != -1) {
         return Fail("An existing POSIX path ending in the VTKHDF token marker was misparsed.");
+    }
+    const auto danglingLink = temporary.path / "dangling.vtkhdf|vtkhdf_step=000000000003";
+    std::filesystem::create_symlink(temporary.path / "no-target.vtkhdf", danglingLink);
+    if (vtkhdf::ParseStepToken(danglingLink, &parsedPath, &parsedStep)
+        || parsedPath != danglingLink || parsedStep != -1) {
+        return Fail("A literal dangling symlink was mistaken for a synthetic step token.");
     }
 #endif
 

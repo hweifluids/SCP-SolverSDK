@@ -88,7 +88,10 @@ inline bool ParseStepToken(const std::filesystem::path& tokenPath,
     std::error_code statusError;
     const std::filesystem::file_status nativePathStatus =
         std::filesystem::symlink_status(tokenPath, statusError);
-    if (statusError) {
+    // A synthetic step token normally does not name a native filesystem entry.
+    // POSIX libraries report that expected absence through ENOENT as well as
+    // file_type::not_found. Other inspection errors must remain visible.
+    if (statusError && statusError != std::errc::no_such_file_or_directory) {
         throw std::runtime_error("Cannot inspect VTKHDF path: " + token + ": "
                                  + statusError.message());
     }
