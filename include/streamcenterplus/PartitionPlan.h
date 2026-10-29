@@ -168,8 +168,8 @@ inline Plan LoadPlan(const std::filesystem::path& path) {
         assignment.gpuDevice = StringField(fields, prefix + "gpu_device");
         const long long start = LongLongField(fields, prefix + "range_start", -1);
         const long long end = LongLongField(fields, prefix + "range_end", -1);
-        const bool hasRange = fields.count(prefix + "range_start") ||
-                              fields.count(prefix + "range_end");
+        // File-level plans serialize the absent range as the pair -1/-1.
+        const bool hasRange = start != -1 || end != -1;
         if (assignment.rank < 0 || assignment.rank >= plan.rankCount ||
             assignment.bytes < 0 ||
             (hasRange && (start < 0 || end < start ||

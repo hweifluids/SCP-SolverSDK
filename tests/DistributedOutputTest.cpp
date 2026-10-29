@@ -67,6 +67,10 @@ int main(int argc, char** argv) {
         }
         Write(planPath, validPlan + "rank_count = 3\n");
         Reject([&] { partition::LoadPlan(planPath); });
+        Write(planPath, "rank_count = 2\nassignment_count = 1\nassignment.0.kind = file\n"
+                        "assignment.0.range_start = -1\nassignment.0.range_end = -1\n");
+        Require(!partition::LoadPlan(planPath).assignments.front().hasRange(),
+                "File-level partition lost its absent-range sentinel.");
         auto context = output::MakeContext(root, runtime.rank(), runtime.size(), true, "run-new");
         // Serial test still exercises a two-shard assembly without an MPI dependency.
         if (runtime.size() == 1) context = output::MakeContext(root, 0, 2, true, "run-new");
