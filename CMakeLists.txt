@@ -67,6 +67,28 @@ install(FILES
 )
 
 if(SCP_SOLVER_SDK_BUILD_TESTING AND BUILD_TESTING)
+  set(SCP_SOLVER_SDK_TEST_OUTPUT_ROOT
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../.tests/SCP-SolverSDK"
+    CACHE PATH "Directory for SDK runtime test artifacts")
+  add_executable(SCPSolverSDKDistributedOutputTests tests/DistributedOutputTest.cpp)
+  target_link_libraries(SCPSolverSDKDistributedOutputTests PRIVATE SCP::SolverSDK)
+  add_test(NAME scp_solver_sdk_rank_output
+    COMMAND SCPSolverSDKDistributedOutputTests "${SCP_SOLVER_SDK_TEST_OUTPUT_ROOT}/rank-output-test")
+  add_test(NAME scp_solver_sdk_adaptive_architecture
+    COMMAND "${CMAKE_COMMAND}" "-DSCP_SOLVER_SDK_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/ValidateAdaptiveArchitecture.cmake")
+  option(SCP_SOLVER_SDK_TEST_MPI "Test distributed output with two real MPI ranks" OFF)
+  if(SCP_SOLVER_SDK_TEST_MPI)
+    find_package(MPI REQUIRED COMPONENTS CXX)
+    add_executable(SCPSolverSDKDistributedOutputMpiTests tests/DistributedOutputTest.cpp)
+    target_link_libraries(SCPSolverSDKDistributedOutputMpiTests PRIVATE SCP::SolverSDK MPI::MPI_CXX)
+    target_compile_definitions(SCPSolverSDKDistributedOutputMpiTests PRIVATE STREAMCENTERPLUS_CLUSTER_MPI=1)
+    add_test(NAME scp_solver_sdk_rank_output_mpi
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${MPIEXEC_PREFLAGS}
+        $<TARGET_FILE:SCPSolverSDKDistributedOutputMpiTests> ${MPIEXEC_POSTFLAGS}
+        "${SCP_SOLVER_SDK_TEST_OUTPUT_ROOT}/rank-output-mpi-test")
+    set_tests_properties(scp_solver_sdk_rank_output_mpi PROPERTIES TIMEOUT 30)
+  endif()
   add_executable(SCPSolverSDKVisualizationManifestTests
     tests/VisualizationManifestTest.cpp
   )
