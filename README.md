@@ -147,6 +147,14 @@ target linked to it in the same CMake directory, including links added after
 the solver-info call. This keeps metadata and code-generation capability
 consistent without redefining a public compile macro on the executable.
 
+A CPU-only compatibility entry can share a CPU/CUDA implementation library by
+setting its target property `STREAMCENTERPLUS_CUDA_CAPABILITY_RESTRICTED` to `ON`
+before configuring solver info with `has_cuda=OFF`. The entry must enforce CPU
+execution; the shared core keeps its CUDA compile-time capability. This explicit
+restriction permits only `cuda=0` metadata over a CUDA-capable linked core. It
+does not permit advertising CUDA over a CPU-only core, and unmarked entries
+retain strict capability matching.
+
 The global requests default to 12 architecture workers and two split-compile optimizer threads. Every CUDA target then applies a finite local safety cap: both caps default to 2 unless the module explicitly opts into a measured higher value. The effective value is the lesser of the request and cap; request value `0` means “use this target's cap”, not unbounded host concurrency. `streamcenterplus_add_optional_cuda` and `streamcenterplus_apply_cuda_release_codegen` accept the named one-value arguments `ARCHITECTURE_THREADS_CAP` and `SPLIT_COMPILE_THREADS_CAP`. Configuration reports the requested, capped, and effective values separately so a packaging log is auditable.
 
 The supported split-compile benchmark sweep is selected explicitly at configure time with `-DSTREAMCENTERPLUS_CUDA_SPLIT_COMPILE_THREADS=2`, `=4`, or `=8`, but a target can use a candidate only when its local cap permits it. These entries are benchmark candidates, not a claim that a higher value is universally faster; the production request remains 2 until representative full-fat timing, peak-memory, generated-code, numerical-result, and runtime-performance measurements justify a change. None of these concurrency settings changes the published architecture matrix.

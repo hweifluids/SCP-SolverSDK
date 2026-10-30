@@ -18,6 +18,7 @@ set(_configure_command
   -B "${FIXTURE_BINARY_DIR}"
   -G "${TEST_GENERATOR}"
   "-DCMAKE_TRY_COMPILE_CONFIGURATION=Release"
+  "-DCMAKE_BUILD_TYPE=Release"
   "-DSCP_SOLVER_SDK_SOURCE_DIR=${SCP_SOLVER_SDK_SOURCE_DIR}"
   "-DSTREAMCENTERPLUS_BUILD_DATE=20260823"
   "-DTEST_MODE=${TEST_MODE}"
@@ -35,9 +36,10 @@ execute_process(
   OUTPUT_VARIABLE _configure_stdout
   ERROR_VARIABLE _configure_stderr
 )
-if(TEST_MODE STREQUAL "matching" OR TEST_MODE STREQUAL "matching-cpu")
+if(TEST_MODE STREQUAL "matching" OR TEST_MODE STREQUAL "matching-cpu" OR
+   TEST_MODE STREQUAL "restricted-entry")
   set(_expected_cuda 1)
-  if(TEST_MODE STREQUAL "matching-cpu")
+  if(TEST_MODE STREQUAL "matching-cpu" OR TEST_MODE STREQUAL "restricted-entry")
     set(_expected_cuda 0)
   endif()
   if(NOT _configure_result EQUAL 0)

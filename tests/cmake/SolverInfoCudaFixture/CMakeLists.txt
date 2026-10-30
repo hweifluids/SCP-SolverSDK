@@ -7,10 +7,10 @@ if(NOT DEFINED SCP_SOLVER_SDK_SOURCE_DIR OR
   message(FATAL_ERROR "SCP_SOLVER_SDK_SOURCE_DIR is required.")
 endif()
 if(NOT DEFINED TEST_MODE OR
-   NOT TEST_MODE MATCHES "^(matching|matching-cpu|direct-mismatch|direct-mismatch-reversed|transitive-mismatch)$")
+   NOT TEST_MODE MATCHES "^(matching|matching-cpu|restricted-entry|restricted-overclaim|direct-mismatch|direct-mismatch-reversed|transitive-mismatch)$")
   message(FATAL_ERROR
     "TEST_MODE must be matching, matching-cpu, direct-mismatch, "
-    "direct-mismatch-reversed, or transitive-mismatch.")
+    "restricted-entry, restricted-overclaim, direct-mismatch-reversed, or transitive-mismatch.")
 endif()
 
 add_library(SCP_SolverSDK INTERFACE)
@@ -26,7 +26,7 @@ include(
 
 # Exercise OptionalCuda's target contract without requiring a CUDA compiler.
 set(_fixture_cuda_capability 1)
-if(TEST_MODE STREQUAL "matching-cpu")
+if(TEST_MODE STREQUAL "matching-cpu" OR TEST_MODE STREQUAL "restricted-overclaim")
   set(_fixture_cuda_capability 0)
 endif()
 set(STREAMCENTERPLUS_CUDA_AVAILABLE "${_fixture_cuda_capability}")
@@ -44,19 +44,32 @@ elseif(TEST_MODE STREQUAL "direct-mismatch-reversed")
 elseif(TEST_MODE STREQUAL "transitive-mismatch")
   streamcenterplus_configure_solver_info(info_fixture Test ON OFF)
   target_link_libraries(info_fixture PRIVATE cuda_core)
-else()
-  streamcenterplus_configure_solver_info(
-    info_fixture Test ON "${_fixture_cuda_capability}")
+elseif(TEST_MODE STREQUAL "restricted-overclaim")
+  set_property(TARGET info_fixture PROPERTY STREAMCENTERPLUS_CUDA_CAPABILITY_RESTRICTED ON)
+  streamcenterplus_configure_solver_info(info_fixture Test ON ON)
   target_link_libraries(info_fixture PRIVATE cuda_core)
+else()
+  set(_fixture_metadata_capability "${_fixture_cuda_capability}")
+  if(TEST_MODE STREQUAL "restricted-entry")
+    set(_fixture_metadata_capability 0)
+    set_property(TARGET info_fixture PROPERTY STREAMCENTERPLUS_CUDA_CAPABILITY_RESTRICTED ON)
+  endif()
+  streamcenterplus_configure_solver_info(
+    info_fixture Test ON "${_fixture_metadata_capability}")
+  # Exercise recursive propagation and alias resolution for restricted entries.
+  add_library(core_alias ALIAS cuda_core)
+  add_library(core_bridge INTERFACE)
+  target_link_libraries(core_bridge INTERFACE core_alias)
+  target_link_libraries(info_fixture PRIVATE core_bridge)
 
   get_target_property(_info_compile_definitions info_fixture COMPILE_DEFINITIONS)
   list(FIND _info_compile_definitions
-    "STREAMCENTERPLUS_SOLVER_HAS_CUDA=${_fixture_cuda_capability}"
+    "STREAMCENTERPLUS_SOLVER_HAS_CUDA=${_fixture_metadata_capability}"
     _solver_metadata_definition)
   if(_solver_metadata_definition EQUAL -1)
     message(FATAL_ERROR
       "Solver-info metadata did not define STREAMCENTERPLUS_SOLVER_HAS_CUDA="
-      "${_fixture_cuda_capability}.")
+      "${_fixture_metadata_capability}.")
   endif()
   foreach(_definition IN LISTS _info_compile_definitions)
     if(_definition MATCHES "^STREAMCENTERPLUS_HAS_CUDA=")

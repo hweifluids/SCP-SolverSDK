@@ -1,7 +1,7 @@
 include_guard(GLOBAL)
 
 function(_streamcenterplus_validate_cuda_capability_dependency
-    dependency expected_capability visited_targets)
+    dependency expected_capability visited_targets restricted_entry)
   if(NOT TARGET "${dependency}")
     return()
   endif()
@@ -25,10 +25,15 @@ function(_streamcenterplus_validate_cuda_capability_dependency
       "${dependency}" INTERFACE_STREAMCENTERPLUS_CUDA_CAPABILITY)
     if(NOT "${_streamcenterplus_dependency_capability}" STREQUAL
            "${expected_capability}")
-      message(FATAL_ERROR
-        "Solver info CUDA capability '${expected_capability}' conflicts with "
-        "the OptionalCuda capability '${_streamcenterplus_dependency_capability}' "
-        "published by linked target '${dependency}'.")
+      # A compatibility entry may deliberately expose only CPU operations from
+      # a shared CPU/CUDA core. The opt-in never permits advertising missing CUDA.
+      if(NOT (restricted_entry AND "${expected_capability}" STREQUAL "0" AND
+              "${_streamcenterplus_dependency_capability}" STREQUAL "1"))
+        message(FATAL_ERROR
+          "Solver info CUDA capability '${expected_capability}' conflicts with "
+          "the OptionalCuda capability '${_streamcenterplus_dependency_capability}' "
+          "published by linked target '${dependency}'.")
+      endif()
     endif()
   endif()
 
@@ -45,7 +50,7 @@ function(_streamcenterplus_validate_cuda_capability_dependency
     endif()
     _streamcenterplus_validate_cuda_capability_dependency(
       "${_streamcenterplus_interface_link}" "${expected_capability}"
-      "${visited_targets}")
+      "${visited_targets}" "${restricted_entry}")
   endforeach()
 endfunction()
 
@@ -53,6 +58,8 @@ function(_streamcenterplus_validate_linked_cuda_capability target expected_capab
   if(NOT TARGET "${target}")
     return()
   endif()
+  get_target_property(_streamcenterplus_restricted_entry "${target}"
+    STREAMCENTERPLUS_CUDA_CAPABILITY_RESTRICTED)
 
   get_target_property(_streamcenterplus_linked_targets
     "${target}" LINK_LIBRARIES)
@@ -66,7 +73,8 @@ function(_streamcenterplus_validate_linked_cuda_capability target expected_capab
       set(_streamcenterplus_linked_target "${CMAKE_MATCH_1}")
     endif()
     _streamcenterplus_validate_cuda_capability_dependency(
-      "${_streamcenterplus_linked_target}" "${expected_capability}" "")
+      "${_streamcenterplus_linked_target}" "${expected_capability}" ""
+      "${_streamcenterplus_restricted_entry}")
   endforeach()
 endfunction()
 

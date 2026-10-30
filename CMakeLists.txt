@@ -295,6 +295,14 @@ if(SCP_SOLVER_SDK_BUILD_TESTING AND BUILD_TESTING)
     scp_solver_sdk_solver_info_cuda_capability_transitive_mismatch
     transitive-mismatch
     "conflicts with the OptionalCuda capability '1' published by linked target 'cuda_core'")
+  _scp_solver_sdk_add_solver_info_cuda_test(
+    scp_solver_sdk_solver_info_cuda_restricted_entry
+    restricted-entry
+    "")
+  _scp_solver_sdk_add_solver_info_cuda_test(
+    scp_solver_sdk_solver_info_cuda_restricted_overclaim
+    restricted-overclaim
+    "conflicts with the OptionalCuda capability '0' published by linked target 'cuda_core'")
 
   set(_scp_solver_sdk_solver_bundle_fixture
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/SolverBundleFixture")
